@@ -18,12 +18,12 @@ void expand(const Cube &c, Hashy &hashes)
     unordered_set<XYZ> candidates;
     for (const auto &p : c.sparse)
     {
-        candidates.insert(XYZ{p.x + 1, p.y, p.z});
-        candidates.insert(XYZ{p.x - 1, p.y, p.z});
-        candidates.insert(XYZ{p.x, p.y + 1, p.z});
-        candidates.insert(XYZ{p.x, p.y - 1, p.z});
-        candidates.insert(XYZ{p.x, p.y, p.z + 1});
-        candidates.insert(XYZ{p.x, p.y, p.z - 1});
+        candidates.emplace(p.x() + 1, p.y(), p.z());
+        candidates.emplace(p.x() - 1, p.y(), p.z());
+        candidates.emplace(p.x(), p.y() + 1, p.z());
+        candidates.emplace(p.x(), p.y() - 1, p.z());
+        candidates.emplace(p.x(), p.y(), p.z() + 1);
+        candidates.emplace(p.x(), p.y(), p.z() - 1);
     }
     for (const auto &p : c.sparse)
     {
@@ -35,26 +35,27 @@ void expand(const Cube &c, Hashy &hashes)
     for (const auto &p : candidates)
     {
 #ifdef DBG
-        printf("(%2d %2d %2d)\n\r", p.x, p.y, p.z);
+        printf("(%2d %2d %2d)\n\r", (int)p.x(), (int)p.y(), (int)p.z());
 #endif
-        int ax = (p.x < 0) ? 1 : 0;
-        int ay = (p.y < 0) ? 1 : 0;
-        int az = (p.z < 0) ? 1 : 0;
+        uint8_t ax = (p.x() == 255) ? 1 : 0;
+        uint8_t ay = (p.y() == 255) ? 1 : 0;
+        uint8_t az = (p.z() == 255) ? 1 : 0;
         Cube newCube;
-        newCube.sparse.push_back(XYZ{p.x + ax, p.y + ay, p.z + az});
-        std::array<int, 3> shape{p.x + ax, p.y + ay, p.z + az};
+        newCube.sparse.reserve(c.sparse.size() + 1);
+        newCube.sparse.emplace_back(p.x() + ax, p.y() + ay, p.z() + az);
+        std::array<uint8_t, 3> shape{uint8_t(p.x() + ax), uint8_t(p.y() + ay), uint8_t(p.z() + az)};
         for (const auto &np : c.sparse)
         {
-            auto nx = np.x + ax;
-            auto ny = np.y + ay;
-            auto nz = np.z + az;
+            auto nx = np.x() + ax;
+            auto ny = np.y() + ay;
+            auto nz = np.z() + az;
             if (nx > shape[0])
                 shape[0] = nx;
             if (ny > shape[1])
                 shape[1] = ny;
             if (nz > shape[2])
                 shape[2] = nz;
-            newCube.sparse.push_back(XYZ{nx, ny, nz});
+            newCube.sparse.emplace_back(nx, ny, nz);
         }
         // printf("shape %2d %2d %2d\n\r", shape[0], shape[1], shape[2]);
         // newCube.print();
@@ -70,17 +71,17 @@ void expand(const Cube &c, Hashy &hashes)
             Cube rotatedCube{res.second};
             std::sort(rotatedCube.sparse.begin(), rotatedCube.sparse.end());
 
-            if (none_set || lowestHashCube < rotatedCube)
+            if (none_set || rotatedCube < lowestHashCube)
             {
                 none_set = false;
-                // printf("shape %2d %2d %2d\n\r", res.first.x, res.first.y, res.first.z);
-                lowestHashCube = rotatedCube;
+                // printf("shape %2d %2d %2d\n\r", (int)res.first.x(), (int)res.first.y(), (int)res.first.z());
+                lowestHashCube = std::move(rotatedCube);
             }
         }
         hashes.insert(lowestHashCube);
 #ifdef DBG
         printf("=====\n\r");
-        rotatedCube.print();
+        lowestHashCube.print();
         printf("inserted! (num %2lu)\n\n\r", hashes.size());
 #endif
     }

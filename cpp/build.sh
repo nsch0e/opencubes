@@ -1,1 +1,1 @@
-g++ cubes.cpp -o cubes --std=c++17 -O3 -lpthread
+g++ cubes.cpp -o cubes -std=c++20 -O3 -march=native -mtune=native -DNDEBUG -lpthread

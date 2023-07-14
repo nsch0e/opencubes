@@ -1,24 +1,44 @@
 #pragma once
 #include <vector>
 #include <unordered_set>
-#include <mutex>
+#include <shared_mutex>
 
 using namespace std;
 // #define DBG 1
+
+template<int Offset>
+struct XYZ_proxy {
+    uint32_t &value;
+
+    constexpr operator uint8_t() const { return (value >> Offset) & 0xff; }
+    constexpr XYZ_proxy &operator=(uint8_t v) { value = (value & ~(0xff << Offset)) | (v << Offset); return *this; }
+};
+
+template<int Offset>
+struct XYZ_proxy_const {
+    const uint32_t &value;
+
+    constexpr operator uint8_t() const { return (value >> Offset) & 0xff; }
+};
+
 struct XYZ
 {
-    union
-    {
-        struct
-        {
-            int8_t x, y, z, res;
-        };
-        int8_t data[4];
-        int32_t joined;
-    };
-    explicit XYZ(int a = 0, int b = 0, int c = 0) : x(a), y(b), z(c), res(0) {}
-    bool operator==(const XYZ &rhs) const { return joined == rhs.joined; }
-    bool operator<(const XYZ &b) const { return joined < b.joined; }
+    uint32_t value;
+
+    explicit constexpr XYZ() : value(0) {}
+    explicit constexpr XYZ(auto a, auto b, auto c) : value(((uint8_t)a << 0) | ((uint8_t)b << 8) | ((uint8_t)c << 16)) {}
+
+    constexpr auto operator<=>(const XYZ &rhs) const = default;
+
+    constexpr uint8_t operator[](int Offset) const { return (value >> (8 * Offset)) & 0xff; }
+
+    constexpr XYZ_proxy<0> x() { return {value}; }
+    constexpr XYZ_proxy<8> y() { return {value}; }
+    constexpr XYZ_proxy<16> z() { return {value}; }
+
+    constexpr XYZ_proxy_const<0> x() const { return {value}; }
+    constexpr XYZ_proxy_const<8> y() const { return {value}; }
+    constexpr XYZ_proxy_const<16> z() const { return {value}; }
 };
 
 struct Cube
@@ -29,11 +49,11 @@ struct Cube
     {
         if (sparse.size() != b.sparse.size())
             return sparse.size() < b.sparse.size();
-        for (int i = 0; i < sparse.size(); ++i)
+        for (std::size_t i = 0; i < sparse.size(); ++i)
         {
-            if (sparse[i].joined < b.sparse[i].joined)
+            if (sparse[i] < b.sparse[i])
                 return true;
-            else if (sparse[i].joined > b.sparse[i].joined)
+            else if (sparse[i] > b.sparse[i])
                 return false;
         }
         return false;
@@ -42,7 +62,7 @@ struct Cube
     void print()
     {
         for (auto &p : sparse)
-            printf("  (%2d %2d %2d)\n\r", p.x, p.y, p.z);
+            printf("  (%2d %2d %2d)\n\r", (int)p.x(), (int)p.y(), (int)p.z());
     }
 };
 
@@ -51,7 +71,7 @@ namespace std
     template <>
     struct hash<XYZ>
     {
-        size_t operator()(const XYZ &x) const { return x.joined; }
+        size_t operator()(const XYZ &x) const { return x.value; }
     };
 
     template <>
@@ -78,14 +98,15 @@ struct Hashy
 {
     unordered_set<Cube> set;
 
-    mutex set_mutex;
+    shared_mutex set_mutex;
     void insert(const Cube &c)
     {
-        lock_guard<mutex> lock(set_mutex);
+        lock_guard lock(set_mutex);
         set.insert(c);
     }
     auto size()
     {
+        shared_lock lock(set_mutex);
         return set.size();
     }
 };

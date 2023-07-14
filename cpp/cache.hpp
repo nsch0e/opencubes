@@ -3,7 +3,7 @@
 #include <fstream>
 #include "structs.hpp"
 
-unordered_set<Cube> load(string path)
+inline unordered_set<Cube> load(string path)
 {
     auto ifs = ifstream(path, ios::binary);
     if (!ifs.is_open())
@@ -31,7 +31,7 @@ unordered_set<Cube> load(string path)
         next.sparse.resize(cubelen);
         for (int k = 0; k < cubelen; ++k)
         {
-            ifs.read((char *)&next.sparse[k].joined, 4);
+            ifs.read((char *)&next.sparse[k].value, 4);
         }
         cubes.insert(next);
     }
@@ -39,7 +39,7 @@ unordered_set<Cube> load(string path)
     return cubes;
 }
 
-void save(string path, unordered_set<Cube> &cubes)
+inline void save(string path, unordered_set<Cube> &cubes)
 {
     if (cubes.size() == 0)
         return;
@@ -49,7 +49,7 @@ void save(string path, unordered_set<Cube> &cubes)
     {
         for (const auto &p : c.sparse)
         {
-            ofs.write((const char *)&p.joined, sizeof(p.joined));
+            ofs.write((const char *)&p.value, sizeof(p.value));
         }
     }
 }
