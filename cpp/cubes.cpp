@@ -72,7 +72,7 @@ void expand(const Cube &c, Hashy &hashes) {
                 lowestShape = res.first;
             }
         }
-        hashes.insert(std::move(lowestHashCube), lowestShape);
+        hashes.insert(std::move(lowestHashCube));
 #ifdef DBG
         std::printf("=====\n\r");
         // lowestHashCube.print();
@@ -111,35 +111,36 @@ void expandPart(std::vector<Cube> &base, Hashy &hashes, size_t start, size_t end
 
 Hashy gen(uint n, int threads = 1) {
     Hashy hashes;
+    hashes.init(n);
     if (n < 1)
         return {};
     else if (n == 1) {
-        hashes.insert(Cube{{XYZ{0, 0, 0}}}, XYZ{0, 0, 0});
+        hashes.insert(Cube{{XYZ{0, 0, 0}}});
         std::printf("%ld elements for %d\n\r", hashes.size(), n);
         return hashes;
     } else if (n == 2) {
-        hashes.insert(Cube{{XYZ{0, 0, 0}, XYZ{0, 0, 1}}}, XYZ{0, 0, 1});
+        hashes.insert(Cube{{XYZ{0, 0, 0}, XYZ{0, 0, 1}}});
         std::printf("%ld elements for %d\n\r", hashes.size(), n);
         return hashes;
     }
 
     if (USE_CACHE) {
-        hashes = load("cubes_" + std::to_string(n) + ".bin");
-
-        if (hashes.size() != 0) return hashes;
+        auto loaded = load("cubes_" + std::to_string(n) + ".bin");
+        if (loaded.size() != 0) {
+            return loaded;
+        }
     }
 
     auto base = gen(n - 1, threads);
     std::printf("N = %d || generating new cubes from %lu base cubes.\n\r", n, base.size());
-    hashes.init(n);
     int count = 0;
     if (threads == 1 || base.size() < 100) {
         auto start = std::chrono::steady_clock::now();
         auto last = start;
         int total = base.size();
 
-        for (const auto &s : base.byshape) {
-            // std::printf("shapes %d %d %d\n\r", s.first.x, s.first.y, s.first.z);
+        for (const auto &s : base.byhash) {
+            // printf("shapes %d %d %d\n\r", s.first.x, s.first.y, s.first.z);
             for (const auto &b : s.second.set) {
                 expand(b, hashes);
                 count++;
@@ -163,7 +164,7 @@ Hashy gen(uint n, int threads = 1) {
     } else {
         std::vector<Cube> baseCubes;
         std::printf("converting to vector\n\r");
-        for (auto &s : base.byshape) {
+        for (auto &s : base.byhash) {
             baseCubes.insert(baseCubes.end(), s.second.set.begin(), s.second.set.end());
             s.second.set.clear();
             s.second.set.reserve(1);

@@ -6,6 +6,7 @@
 #include <shared_mutex>
 #include <unordered_set>
 #include <vector>
+#include <map>
 
 // #define DBG 1
 struct XYZ {
@@ -108,32 +109,42 @@ struct Hashy {
         }
     };
 
-    std::map<XYZ, Subhashy> byshape;
-    void init(int n) {
-        // create all subhashy which will be needed for N
-        for (int x = 0; x < n; ++x)
-            for (int y = x; y < (n - x); ++y)
-                for (int z = y; z < (n - x - y); ++z) {
-                    if ((x + 1) * (y + 1) * (z + 1) < n)  // not enough space for n cubes
-                        continue;
-                    byshape[XYZ{x, y, z}].size();
-                }
-        std::printf("%ld sets by shape for N=%d\n\r", byshape.size(), n);
+    std::map<uint, Subhashy> byhash;
+    uint n_subhashes = 0;
+    void init(int n)
+    {
+        n_subhashes = (1 << n);
+        for (uint i = 0; i < n_subhashes; i++){
+            byhash[i].size();
+        }
+        printf("%ld maps by shape\n\r", byhash.size());
     }
 
     template <typename CubeT>
-    void insert(CubeT &&c, XYZ shape) {
+    uint hash_cube(CubeT &&c) {
+        uint x = 0;
+        for(const auto &p : std::forward<CubeT>(c).sparse){
+            x ^= p.joined;
+            x ^= x << 13;
+            x ^= x >> 17;
+            x ^= x << 5;
+        }
+        return x;
+    }
+
+    template <typename CubeT>
+    void insert(CubeT &&c) {
+        auto hash = hash_cube(c) % n_subhashes;
 #ifndef NDEBUG
         // printf("insert into shape %d %d %d\n", shape.x, shape.y, shape.z);
         // c.print();
-        if (byshape.find(shape) == byshape.end()) {
+        if (byhash.find(hash) == byhash.end()) {
             printf("ERROR! shape %d %d %d should already be in map!\n\r", shape.x, shape.y, shape.z);
             exit(-1);
         }
 #endif
-        auto &set = byshape[shape];
+        auto &set = byhash[hash];
         if (!set.contains(std::forward<CubeT>(c))) set.insert(std::forward<CubeT>(c));
-        // printf("new size %ld\n\r", byshape[shape].size());
     }
 
     auto size() {
@@ -141,7 +152,7 @@ struct Hashy {
 #ifdef DBG
         std::printf("%ld maps by shape\n\r", byshape.size());
 #endif
-        for (auto &set : byshape) {
+        for (auto &set : byhash) {
             auto part = set.second.size();
 #ifdef DBG
             std::printf("bucket [%2d %2d %2d]: %ld\n", set.first.x, set.first.y, set.first.z, part);
