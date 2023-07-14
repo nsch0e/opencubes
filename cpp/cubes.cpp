@@ -4,7 +4,6 @@
 #include <chrono>
 #include <iostream>
 #include <thread>
-#include <map>
 
 #include "cache.hpp"
 #include "results.hpp"
