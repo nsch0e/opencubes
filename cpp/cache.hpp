@@ -1,18 +1,20 @@
 #pragma once
+#ifndef OPENCUBE_CACHE_HPP
+#define OPENCUBE_CACHE_HPP
 #include <unordered_set>
 #include <fstream>
+#include <string>
 #include "structs.hpp"
 
-unordered_set<Cube> load(string path)
-{
-    auto ifs = ifstream(path, ios::binary);
+CubeSet load(std::string path) {
+    auto ifs = std::ifstream(path, std::ios::binary);
     if (!ifs.is_open())
         return {};
     uint8_t cubelen = 0;
     uint filelen = ifs.tellg();
-    ifs.seekg(0, ios::end);
+    ifs.seekg(0, std::ios::end);
     filelen = (uint)ifs.tellg() - filelen;
-    ifs.seekg(0, ios::beg);
+    ifs.seekg(0, std::ios::beg);
     ifs.read((char *)&cubelen, 1);
     printf("loading cache file \"%s\" (%u bytes) with N = %d\n\r", path.c_str(), filelen, cubelen);
 
@@ -24,8 +26,8 @@ unordered_set<Cube> load(string path)
         return {};
     }
     printf("  num polycubes loading: %d\n\r", numCubes);
-    unordered_set<Cube> cubes;
-    for (int i = 0; i < numCubes; ++i)
+    CubeSet cubes;
+    for (size_t i = 0; i < numCubes; ++i)
     {
         Cube next;
         next.sparse.resize(cubelen);
@@ -39,11 +41,10 @@ unordered_set<Cube> load(string path)
     return cubes;
 }
 
-void save(string path, unordered_set<Cube> &cubes)
-{
+void save(std::string path, CubeSet &cubes) {
     if (cubes.size() == 0)
         return;
-    ofstream ofs(path, ios::binary);
+    std::ofstream ofs(path, std::ios::binary);
     ofs << (uint8_t)cubes.begin()->sparse.size();
     for (const auto &c : cubes)
     {
@@ -53,3 +54,5 @@ void save(string path, unordered_set<Cube> &cubes)
         }
     }
 }
+
+#endif

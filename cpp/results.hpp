@@ -1,4 +1,6 @@
 #pragma once
+#ifndef OPENCUBE_RESULTS_HPP
+#define OPENCUBE_RESULTS_HPP
 // from http://kevingong.com/Polyominoes/Enumeration.html
 uint64_t results[] = {
     1,
@@ -17,3 +19,5 @@ uint64_t results[] = {
     1039496297,
     7859514470,
     59795121480};
+    
+#endif
