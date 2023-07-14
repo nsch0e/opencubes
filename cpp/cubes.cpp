@@ -4,6 +4,7 @@
 #include <chrono>
 #include <iostream>
 #include <thread>
+#include <map>
 
 #include "cache.hpp"
 #include "results.hpp"
@@ -70,7 +71,7 @@ void expand(const Cube &c, Hashy &hashes) {
                 lowestShape = res.first;
             }
         }
-        hashes.insert(std::move(lowestHashCube), lowestShape);
+        hashes.insert(std::move(lowestHashCube));
 #ifdef DBG
         std::printf("=====\n\r");
         // lowestHashCube.print();
@@ -110,11 +111,11 @@ Hashy gen(int n, int threads = 1) {
     if (n < 1)
         return {};
     else if (n == 1) {
-        hashes.insert(Cube{{XYZ{0, 0, 0}}}, XYZ{0, 0, 0});
+        hashes.insert(Cube{{XYZ{0, 0, 0}}});
         std::printf("%ld elements for %d\n\r", hashes.size(), n);
         return hashes;
     } else if (n == 2) {
-        hashes.insert(Cube{{XYZ{0, 0, 0}, XYZ{0, 0, 1}}}, XYZ{0, 0, 1});
+        hashes.insert(Cube{{XYZ{0, 0, 0}, XYZ{0, 0, 1}}});
         std::printf("%ld elements for %d\n\r", hashes.size(), n);
         return hashes;
     }
@@ -133,7 +134,8 @@ Hashy gen(int n, int threads = 1) {
         auto start = std::chrono::steady_clock::now();
         int total = base.size();
 
-        for (const auto &s : base.byshape) {
+        for (const auto &s : base.byhash)
+        {
             // printf("shapes %d %d %d\n\r", s.first.x, s.first.y, s.first.z);
             for (const auto &b : s.second.set) {
                 expand(b, hashes);
@@ -155,7 +157,7 @@ Hashy gen(int n, int threads = 1) {
     } else {
         std::vector<Cube> baseCubes;
         std::printf("converting to vector\n\r");
-        for (auto &s : base.byshape) {
+        for (auto &s : base.byhash) {
             baseCubes.insert(baseCubes.end(), s.second.set.begin(), s.second.set.end());
             s.second.set.clear();
             s.second.set.reserve(1);

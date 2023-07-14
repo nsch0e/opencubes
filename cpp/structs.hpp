@@ -6,6 +6,7 @@
 #include <shared_mutex>
 #include <unordered_set>
 #include <vector>
+#include <map>
 
 // #define DBG 1
 struct XYZ {
@@ -108,27 +109,38 @@ struct Hashy {
         }
     };
 
-    std::map<XYZ, Subhashy> byshape;
-    void init(int n) {
-        // create all subhashy which will be needed for N
-        for (int x = 0; x < n; ++x)
-            for (int y = x; y < (n - x); ++y)
-                for (int z = y; z < (n - x - y); ++z) byshape[XYZ{x, y, z}].size();
-        std::printf("%ld maps by shape\n\r", byshape.size());
+    std::map<uint, Subhashy> byhash;
+    uint n_subhashes = 0;
+    void init(int n)
+    {
+        n_subhashes = (1 << n);
+        for (int i = 0; i < n_subhashes; i++)
+            byhash[i].size();
+        printf("%ld maps by shape\n\r", byhash.size());
     }
 
     template <typename CubeT>
-    void insert(CubeT &&c, XYZ shape) {
-        // printf("insert into shape %d %d %d\n", shape.x, shape.y, shape.z);
-        // c.print();
-        auto &set = byshape[shape];
-        if (!set.contains(std::forward<CubeT>(c))) set.insert(std::forward<CubeT>(c));
-        // printf("new size %ld\n\r", byshape[shape].size());
+    uint hash(const CubeT &c){
+        uint x = 0;
+        for(const auto &p : c.sparse){
+            x ^= p.joined;
+            x ^= x << 13;
+            x ^= x >> 17;
+            x ^= x << 5;
+        }
+        return x;
+    }
+
+    template <typename CubeT>
+    void insert(CubeT &&c) {
+        auto cube = std::forward<CubeT>(c);
+        auto &set = byhash[hash(cube)];
+        if (!set.contains(cube)) set.insert(cube);
     }
 
     auto size() {
         size_t sum = 0;
-        for (auto &set : byshape) sum += set.second.size();
+        for (auto &set : byhash) sum += set.second.size();
         return sum;
     }
 };

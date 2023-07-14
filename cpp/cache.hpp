@@ -37,7 +37,7 @@ Hashy load(std::string path) {
             if (next.sparse[k].y > shape.y) shape.y = next.sparse[k].y;
             if (next.sparse[k].z > shape.z) shape.z = next.sparse[k].z;
         }
-        cubes.insert(next, shape);
+        cubes.insert(next);
     }
     printf("  loaded %lu cubes\n\r", cubes.size());
     return cubes;
@@ -47,7 +47,7 @@ void save(std::string path, Hashy &cubes, uint8_t n) {
     if (cubes.size() == 0) return;
     std::ofstream ofs(path, std::ios::binary);
     ofs << n;
-    for (const auto &s : cubes.byshape)
+    for (const auto &s : cubes.byhash)
         for (const auto &c : s.second.set) {
             for (const auto &p : c) {
                 ofs.write((const char *)&p.joined, sizeof(p.joined));
