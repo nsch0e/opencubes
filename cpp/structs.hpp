@@ -2,6 +2,9 @@
 #include <vector>
 #include <unordered_set>
 #include <mutex>
+#include <shared_mutex>
+#include <atomic>
+#include <map>
 
 using namespace std;
 // #define DBG 1
@@ -72,20 +75,42 @@ namespace std
             return seed;
         }
     };
+
+    struct Hashy
+    {
+        unordered_set<Cube> set;
+        unordered_set<Cube>* cache;
+        uint* counters;
+
+        mutex set_mutex;
+
+        void init(uint n_threads){
+            cache = new unordered_set<Cube>[n_threads];
+            counters = new uint[n_threads];
+        }
+
+        void mergeCache(uint uid){
+            lock_guard<mutex> lock(set_mutex);
+            set.insert(cache[uid].begin(), cache[uid].end());
+            cache[uid].clear();
+        }
+
+        void finalise(uint n_threads){
+            for(uint i = 0; i < n_threads; i++){
+                mergeCache(i);
+            }
+        }
+
+        void insert(const Cube &c, uint uid)
+        {
+            cache[uid].insert(c);
+            if((counters[uid]++) % 10000 == 0){
+                mergeCache(uid);
+            }
+        }
+        auto size()
+        {
+            return set.size();
+        }
+    };
 } // namespace std
-
-struct Hashy
-{
-    unordered_set<Cube> set;
-
-    mutex set_mutex;
-    void insert(const Cube &c)
-    {
-        lock_guard<mutex> lock(set_mutex);
-        set.insert(c);
-    }
-    auto size()
-    {
-        return set.size();
-    }
-};

@@ -13,7 +13,7 @@ using namespace std;
 
 bool USE_CACHE = 1;
 
-void expand(const Cube &c, Hashy &hashes)
+void expand(const Cube &c, Hashy &hashes, uint uid)
 {
     unordered_set<XYZ> candidates;
     for (const auto &p : c.sparse)
@@ -73,7 +73,7 @@ void expand(const Cube &c, Hashy &hashes)
                 lowestHashCube = rotatedCube;
             }
         }
-        hashes.insert(lowestHashCube);
+        hashes.insert(lowestHashCube, uid);
 #ifdef DBG
         printf("=====\n\r");
         rotatedCube.print();
@@ -85,14 +85,14 @@ void expand(const Cube &c, Hashy &hashes)
 #endif
 }
 
-void expandPart(vector<Cube> &base, Hashy &hashes, size_t start, size_t end)
+void expandPart(vector<Cube> &base, Hashy &hashes, size_t start, size_t end, uint uid)
 {
     printf("  start from %lu to %lu\n\r", start, end);
     auto t_start = chrono::steady_clock::now();
 
     for (auto i = start; i < end; ++i)
     {
-        expand(base[i], hashes);
+        expand(base[i], hashes, uid);
         auto count = i - start;
         if (start == 0 && (count % 100 == 99))
         {
@@ -128,6 +128,7 @@ unordered_set<Cube> gen(int n, int threads = 1)
         if (hashes.size() != 0)
             return hashes.set;
     }
+    hashes.init(threads);
 
     auto base = gen(n - 1, threads);
     printf("N = %d || generating new cubes from %lu base cubes.\n\r", n, base.size());
@@ -138,7 +139,7 @@ unordered_set<Cube> gen(int n, int threads = 1)
         int total = base.size();
         for (const auto &b : base)
         {
-            expand(b, hashes);
+            expand(b, hashes, 1);
             count++;
             if (count % 100 == 99)
             {
@@ -171,13 +172,14 @@ unordered_set<Cube> gen(int n, int threads = 1)
             auto start = baseCubes.size() * i / threads;
             auto end = baseCubes.size() * (i + 1) / threads;
 
-            ts.push_back(thread(expandPart, ref(baseCubes), ref(hashes), start, end));
+            ts.push_back(thread(expandPart, ref(baseCubes), ref(hashes), start, end, i));
         }
         for (int i = 0; i < threads; ++i)
         {
             ts[i].join();
         }
     }
+    hashes.finalise(threads);
     printf("  num cubes: %lu\n\r", hashes.size());
     save("cubes_" + to_string(n) + ".bin", hashes.set);
     if (sizeof(results) / sizeof(results[0]) > (n - 1) && n > 1)
