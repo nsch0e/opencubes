@@ -139,7 +139,7 @@ struct Hashy {
         // printf("insert into shape %d %d %d\n", shape.x, shape.y, shape.z);
         // c.print();
         if (byhash.find(hash) == byhash.end()) {
-            printf("ERROR! shape %d %d %d should already be in map!\n\r", shape.x, shape.y, shape.z);
+            printf("ERROR! hash %dshould already be in map!\n\r", hash);
             exit(-1);
         }
 #endif
@@ -155,7 +155,7 @@ struct Hashy {
         for (auto &set : byhash) {
             auto part = set.second.size();
 #ifdef DBG
-            std::printf("bucket [%2d %2d %2d]: %ld\n", set.first.x, set.first.y, set.first.z, part);
+            std::printf("bucket [%d]: %ld\n", hash, part);
 #endif
             sum += part;
         }
