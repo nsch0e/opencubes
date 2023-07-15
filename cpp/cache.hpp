@@ -32,13 +32,14 @@ Hashy load(std::string path) {
     }
     std::printf("  num polycubes loading: %ld\n\r", numCubes);
     cubes.init(cubelen);
+    uint32_t buf[cubelen];
     for (size_t i = 0; i < numCubes; ++i) {
+        ifs.read((char *)&buf, 4 * cubelen);
         Cube next;
         next.sparse.resize(cubelen);
         XYZ shape;
         for (int k = 0; k < cubelen; ++k) {
-            uint32_t tmp;
-            ifs.read((char *)&tmp, 4);
+            auto &tmp = buf[k];
             next.sparse[k][0] = (tmp >> 16) & 0xff;
             next.sparse[k][1] = (tmp >> 8) & 0xff;
             next.sparse[k][2] = (tmp)&0xff;
@@ -47,6 +48,10 @@ Hashy load(std::string path) {
             if (next.sparse[k].z() > shape.z()) shape.z() = next.sparse[k].z();
         }
         cubes.insert(next, shape);
+        if (i % 100 == 99) {
+            std::printf("%3ld%%\r", 100 * i / numCubes);
+            std::flush(std::cout);
+        }
     }
     std::printf("  loaded %lu cubes\n\r", cubes.size());
     return cubes;
@@ -54,6 +59,10 @@ Hashy load(std::string path) {
 
 void save(std::string path, Hashy &cubes, uint8_t n) {
     if (cubes.size() == 0) return;
+    if (cubes.useTarget) {
+        path = "cubes_" + std::to_string(n) + "_" + std::to_string(cubes.target.x()) + "-" + std::to_string(cubes.target.y()) + "-" +
+               std::to_string(cubes.target.z()) + ".bin";
+    }
     std::ofstream ofs(path, std::ios::binary);
     ofs << n;
     for (const auto &s : cubes.byshape)
