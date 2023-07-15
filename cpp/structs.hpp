@@ -97,12 +97,6 @@ struct Hashy {
             set.emplace(std::forward<CubeT>(c));
         }
 
-        template <typename CubeT>
-        bool contains(CubeT &&c) {
-            std::shared_lock lock(set_mutex);
-            return set.count(std::forward<CubeT>(c));
-        }
-
         auto size() {
             std::shared_lock lock(set_mutex);
             return set.size();
@@ -120,9 +114,9 @@ struct Hashy {
     }
 
     template <typename CubeT>
-    uint hash(const CubeT &c){
+    uint hash(CubeT &&c){
         uint x = 0;
-        for(const auto &p : c.sparse){
+        for(const auto &p : std::forward<CubeT>(c).sparse){
             x ^= p.joined;
             x ^= x << 13;
             x ^= x >> 17;
@@ -133,9 +127,11 @@ struct Hashy {
 
     template <typename CubeT>
     void insert(CubeT &&c) {
-        auto cube = std::forward<CubeT>(c);
-        auto &set = byhash[hash(cube)];
-        if (!set.contains(cube)) set.insert(cube);
+        if(n_subhashes == 0){
+            n_subhashes = 1;
+        }
+        auto &set = byhash[hash(c) % n_subhashes];
+        set.insert(std::forward<CubeT>(c));
     }
 
     auto size() {

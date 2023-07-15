@@ -26,7 +26,7 @@ Hashy load(std::string path) {
     }
     printf("  num polycubes loading: %d\n\r", numCubes);
     Hashy cubes;
-    cubes.init(cubelen);
+    cubes.init(1);
     for (int i = 0; i < numCubes; ++i) {
         Cube next;
         next.sparse.resize(cubelen);

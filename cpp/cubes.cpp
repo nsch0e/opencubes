@@ -85,7 +85,6 @@ void expand(const Cube &c, Hashy &hashes) {
 void expandPart(std::vector<Cube> &base, Hashy &hashes, size_t start, size_t end) {
     printf("  start from %lu to %lu\n\r", start, end);
     auto t_start = std::chrono::steady_clock::now();
-
     for (auto i = start; i < end; ++i) {
         expand(base[i], hashes);
         auto count = i - start;
@@ -107,6 +106,7 @@ void expandPart(std::vector<Cube> &base, Hashy &hashes, size_t start, size_t end
 
 Hashy gen(int n, int threads = 1) {
     Hashy hashes;
+    hashes.init(n);
     if (n < 1)
         return {};
     else if (n == 1) {
@@ -127,7 +127,6 @@ Hashy gen(int n, int threads = 1) {
 
     auto base = gen(n - 1, threads);
     std::printf("N = %d || generating new cubes from %lu base cubes.\n\r", n, base.size());
-    hashes.init(n);
     int count = 0;
     if (threads == 1 || base.size() < 100) {
         auto start = std::chrono::steady_clock::now();
