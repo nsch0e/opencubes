@@ -113,6 +113,9 @@ struct Hashy {
     };
 
     std::map<XYZ, Subhashy> byshape;
+    bool useTarget = false;
+    XYZ target;
+
     void init(int n) {
         // create all subhashy which will be needed for N
         for (int x = 0; x < n; ++x)
@@ -124,9 +127,13 @@ struct Hashy {
                 }
         std::printf("%ld sets by shape for N=%d\n\r", byshape.size(), n);
     }
-
+    void select(XYZ target) {
+        useTarget = true;
+        this->target = target;
+    }
     template <typename CubeT>
     void insert(CubeT &&c, XYZ shape) {
+        if (useTarget && shape != target) return;
 #ifndef NDEBUG
         // printf("insert into shape %d %d %d\n", shape.x(), shape.y(), shape.z());
         // c.print();

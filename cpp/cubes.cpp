@@ -112,7 +112,7 @@ void expandPart(std::vector<Cube> &base, Hashy &hashes, size_t start, size_t end
 Hashy gen(uint n, int threads = 1) {
     Hashy hashes;
     if (n < 1)
-        return {};
+        return hashes;
     else if (n == 1) {
         hashes.insert(Cube{{XYZ(0, 0, 0)}}, XYZ(0, 0, 0));
         std::printf("%ld elements for %d\n\r", hashes.size(), n);
@@ -132,6 +132,7 @@ Hashy gen(uint n, int threads = 1) {
     auto base = gen(n - 1, threads);
     std::printf("N = %d || generating new cubes from %lu base cubes.\n\r", n, base.size());
     hashes.init(n);
+    hashes.select(XYZ(0, 3, 3));
     int count = 0;
     if (threads == 1 || base.size() < 100) {
         auto start = std::chrono::steady_clock::now();
