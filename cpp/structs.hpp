@@ -127,9 +127,6 @@ struct Hashy {
 
     template <typename CubeT>
     void insert(CubeT &&c) {
-        if(n_subhashes == 0){
-            n_subhashes = 1;
-        }
         auto &set = byhash[hash(c) % n_subhashes];
         set.insert(std::forward<CubeT>(c));
     }

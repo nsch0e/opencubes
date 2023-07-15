@@ -120,9 +120,9 @@ Hashy gen(int n, int threads = 1) {
     }
 
     if (USE_CACHE) {
-        hashes = load("cubes_" + std::to_string(n) + ".bin");
-
-        if (hashes.size() != 0) return hashes;
+        if (hashes.size() != 0) {
+            return load("cubes_" + std::to_string(n) + ".bin");
+        }
     }
 
     auto base = gen(n - 1, threads);
