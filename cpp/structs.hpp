@@ -1,6 +1,7 @@
 #pragma once
 #ifndef OPENCUBES_STRUCTS_HPP
 #define OPENCUBES_STRUCTS_HPP
+#include <array>
 #include <cstdio>
 #include <map>
 #include <shared_mutex>
@@ -89,51 +90,51 @@ struct HashCube {
 
 using CubeSet = std::unordered_set<Cube, HashCube, std::equal_to<Cube>>;
 
+struct Subsubhashy {
+    CubeSet set;
+    std::shared_mutex set_mutex;
+
+    template <typename CubeT>
+    void insert(CubeT &&c) {
+        std::lock_guard lock(set_mutex);
+        set.emplace(std::forward<CubeT>(c));
+    }
+
+    bool contains(const Cube &c) {
+        std::shared_lock lock(set_mutex);
+        return set.count(c);
+    }
+
+    auto size() {
+        std::shared_lock lock(set_mutex);
+        return set.size();
+    }
+};
+
+template <int NUM>
+struct Subhashy {
+    std::array<Subsubhashy, NUM> byhash;
+
+    template <typename CubeT>
+    void insert(CubeT &&c) {
+        HashCube hash;
+        auto idx = hash(c) % NUM;
+        auto &set = byhash[idx];
+        if (!set.contains(c)) set.insert(std::forward<CubeT>(c));
+        // printf("new size %ld\n\r", byshape[shape].size());
+    }
+
+    auto size() {
+        size_t sum = 0;
+        for (auto &set : byhash) {
+            auto part = set.size();
+            sum += part;
+        }
+        return sum;
+    }
+};
+
 struct Hashy {
-    struct Subsubhashy {
-        CubeSet set;
-        std::shared_mutex set_mutex;
-
-        template <typename CubeT>
-        void insert(CubeT &&c) {
-            std::lock_guard lock(set_mutex);
-            set.emplace(std::forward<CubeT>(c));
-        }
-
-        template <typename CubeT>
-        bool contains(CubeT &&c) {
-            std::shared_lock lock(set_mutex);
-            return set.count(std::forward<CubeT>(c));
-        }
-
-        auto size() {
-            std::shared_lock lock(set_mutex);
-            return set.size();
-        }
-    };
-    template <uint NUM>
-    struct Subhashy {
-        std::array<Subsubhashy, NUM> byhash;
-
-        template <typename CubeT>
-        void insert(CubeT &&c) {
-            HashCube hash;
-            auto idx = hash(c) % NUM;
-            auto &set = byhash[idx];
-            if (!set.contains(std::forward<CubeT>(c))) set.insert(std::forward<CubeT>(c));
-            // printf("new size %ld\n\r", byshape[shape].size());
-        }
-
-        auto size() {
-            size_t sum = 0;
-            for (auto &set : byhash) {
-                auto part = set.size();
-                sum += part;
-            }
-            return sum;
-        }
-    };
-
     std::map<XYZ, Subhashy<8>> byshape;
     void init(int n) {
         // create all subhashy which will be needed for N
