@@ -57,19 +57,24 @@ void expand(const Cube &c, Hashy &hashes) {
 
         // check rotations
         Cube lowestHashCube;
+        Cube rotatedCube;
         XYZ lowestShape;
         bool none_set = true;
+
+        lowestHashCube.reserve(newCube.size());
+        rotatedCube.reserve(newCube.size());
+
         for (int i = 0; i < 24; ++i) {
-            auto res = Rotations::rotate(i, shape, newCube);
-            if (res.second.size() == 0) continue;  // rotation generated violating shape
-            Cube rotatedCube{std::move(res.second)};
+            auto [xyz, ok] = Rotations::rotate(i, shape, newCube, rotatedCube);
+            if (!ok) continue;  // rotation generated violating shape
+
             std::sort(rotatedCube.begin(), rotatedCube.end());
 
             if (none_set || lowestHashCube < rotatedCube) {
                 none_set = false;
-                // std::printf("shape %2d %2d %2d\n\r", res.first.x(), res.first.y(), res.first.z());
-                lowestHashCube = std::move(rotatedCube);
-                lowestShape = res.first;
+                // std::printf("shape %2d %2d %2d\n\r", shape.x(), shape.y(), shape.z());
+                std::swap(lowestHashCube, rotatedCube);
+                lowestShape = xyz;
             }
         }
         hashes.insert(std::move(lowestHashCube), lowestShape);

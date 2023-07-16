@@ -15,12 +15,11 @@ struct Rotations {
         {1, 2, 0, -1, 1, -1}, {1, 2, 0, 1, -1, -1},  {1, 2, 0, 1, 1, 1},   {2, 0, 1, -1, -1, 1},  {2, 0, 1, -1, 1, -1}, {2, 0, 1, 1, -1, -1},
         {2, 0, 1, 1, 1, 1},   {2, 1, 0, -1, -1, -1}, {2, 1, 0, -1, 1, 1},  {2, 1, 0, 1, -1, 1},   {2, 1, 0, 1, 1, -1},
     };
-    static std::pair<XYZ, std::vector<XYZ>> rotate(int i, XYZ shape, const Cube &orig) {
+    static std::pair<XYZ, bool> rotate(int i, XYZ shape, const Cube &orig, Cube &dest) {
         const auto L = LUT[i];
         XYZ out_shape{shape[L[0]], shape[L[1]], shape[L[2]]};
-        if (out_shape.x() > out_shape.y() || out_shape.y() > out_shape.z()) return {out_shape, {}};  // return here because violating shape
-        std::vector<XYZ> res;
-        res.reserve(orig.size());
+        if (out_shape.x() > out_shape.y() || out_shape.y() > out_shape.z()) return {out_shape, false};  // return here because violating shape
+        dest.sparse.clear();
         for (const auto &o : orig) {
             XYZ next;
             if (L[3] < 0)
@@ -37,9 +36,9 @@ struct Rotations {
                 next.z() = shape[L[2]] - o.data[L[2]];
             else
                 next.z() = o.data[L[2]];
-            res.emplace_back(next);
+            dest.emplace_back(next);
         }
-        return {out_shape, res};
+        return {out_shape, true};
     }
 };
 #endif
