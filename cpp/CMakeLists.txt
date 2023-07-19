@@ -3,11 +3,36 @@ project(cubes CXX)
 
 # default to release build because speed maters.
 if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE "Release")
+    set(CMAKE_BUILD_TYPE "Release" CACHE STRING "CMAKE_BUILD_TYPE: Release, Debug or RelWithDebInfo" FORCE)
 endif()
+
+if(NOT BUILD_CUBES_MAX_N)
+	set(BUILD_CUBES_MAX_N 20 CACHE STRING "Limit of maximum N Polycubes to be computed" FORCE)
+endif()
+
+if(NOT BUILD_PACK_CUBE_ADDR)
+	set(BUILD_PACK_CUBE_ADDR 1 CACHE BOOL "Pack Cube struct XYZ memory address into 56-bit field." FORCE)
+endif()
+
+# Try extract current HEAD commit-id in git
+find_package(Git)
+if(GIT_FOUND)
+	execute_process(
+		COMMAND ${GIT_EXECUTABLE} rev-list -n1 HEAD
+		WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+		OUTPUT_STRIP_TRAILING_WHITESPACE
+		RESULT_VARIABLE RESULT
+		OUTPUT_VARIABLE CONFIG_GIT_VERSION)
+	message(STATUS "Set ${CONFIG_GIT_VERSION} to build version info")
+endif()
+
+# generate config.hpp header in build directory.
+set(CONFIG_IS_READONLY "Warning: this file is overwritten during build. Do not edit.")
+configure_file("config.hpp.in" "config.hpp")
 
 include_directories("include")
 include_directories("libraries")
+include_directories("${PROJECT_BINARY_DIR}")
 
 macro(ConfigureTarget Target)
 	# Enable C++17
