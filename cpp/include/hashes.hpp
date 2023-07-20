@@ -8,6 +8,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "compressedCube.hpp"
 #include "cube.hpp"
 #include "utils.hpp"
 
@@ -22,8 +23,21 @@ struct HashCube {
         return seed;
     }
 };
+struct HashCompressedCube {
+    size_t operator()(const CompressedCube &cube) const {
+        // https://stackoverflow.com/questions/20511347/a-good-hash-function-for-a-vector/72073933#72073933
+        std::size_t seed = cube.encodedLen();
+        size_t *ptr = (size_t *)cube.enc.data();
+        for (uint64_t i = 0; i < sizeof(cube.enc) / sizeof(size_t); ++i) {
+            auto x = ptr[i];
+            seed ^= x + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+        }
+        return seed;
+    }
+};
 
-using CubeSet = std::unordered_set<Cube, HashCube, std::equal_to<Cube>>;
+// using CubeSet = std::unordered_set<Cube, HashCube, std::equal_to<Cube>>;
+using CubeSet = std::unordered_set<CompressedCube, HashCompressedCube, std::equal_to<CompressedCube>>;
 
 struct Hashy {
     struct Subsubhashy {
@@ -36,7 +50,7 @@ struct Hashy {
             set.emplace(std::forward<CubeT>(c));
         }
 
-        bool contains(const Cube &c) {
+        bool contains(const CompressedCube &c) {
             std::shared_lock lock(set_mutex);
             return set.count(c);
         }
@@ -52,7 +66,7 @@ struct Hashy {
 
         template <typename CubeT>
         void insert(CubeT &&c) {
-            HashCube hash;
+            HashCompressedCube hash;
             auto idx = hash(c) % NUM;
             auto &set = byhash[idx];
             if (!set.contains(c)) set.insert(std::forward<CubeT>(c));
