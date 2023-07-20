@@ -52,6 +52,11 @@ add_executable(${PROJECT_NAME} "program.cpp" $<TARGET_OBJECTS:CubeObjs>)
 target_link_libraries(${PROJECT_NAME} pthread)
 ConfigureTarget(${PROJECT_NAME})
 
+
+add_executable(encode "testencode.cpp" $<TARGET_OBJECTS:CubeObjs>)
+target_link_libraries(encode pthread)
+ConfigureTarget(encode)
+
 # Optionally build tests
 option(BUILD_TESTS OFF "Build test suite")
 if(BUILD_TESTS)

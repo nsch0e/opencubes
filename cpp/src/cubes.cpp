@@ -124,7 +124,8 @@ struct Workset {
                     lowestShape = res;
                 }
             }
-            hashes.insert(lowestHashCube, lowestShape);
+            auto compr = CompressedCube::encode(lowestHashCube);
+            hashes.insert(compr, lowestShape);
         }
     }
 };
@@ -160,7 +161,9 @@ Hashy gen(int n, int threads, bool use_cache, bool write_cache, bool split_cache
         return {};
     else if (n == 1) {
         hashes.init(n);
-        hashes.insert(Cube{{XYZ(0, 0, 0)}}, XYZ(0, 0, 0));
+        Cube tmpCube{{XYZ(0, 0, 0)}};
+        auto compr = CompressedCube::encode(tmpCube);
+        hashes.insert(compr, XYZ(0, 0, 0));
         std::printf("%ld elements for %d\n\r", hashes.size(), n);
         return hashes;
     }

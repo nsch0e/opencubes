@@ -67,13 +67,8 @@ void Cache::save(std::string path, Hashy &hashes, uint8_t n) {
     for (auto &key : keys) {
         for (auto &subset : hashes.byshape[key].byhash)
             for (const auto &c : subset.set) {
-                if constexpr (sizeof(XYZ) == XYZ_SIZE) {
-                    ofs.write((const char *)c.data(), sizeof(XYZ) * c.size());
-                } else {
-                    for (const auto &p : c) {
-                        ofs.write((const char *)p.data, XYZ_SIZE);
-                    }
-                }
+                std::printf("TODO WRITE CACHE!!\n");
+                exit(-1);
             }
     }
 
@@ -151,7 +146,7 @@ Hashy Cache::load(std::string path, uint32_t extractShape) {
                 next.data()[k].data[1] = buf[curr_offset - buf_offset + 1];
                 next.data()[k].data[2] = buf[curr_offset - buf_offset + 2];
             }
-            cubes.insert(next, shape);
+            cubes.insert(CompressedCube::encode(next), shape);
         }
 
         // restore pos
