@@ -20,6 +20,8 @@ struct CompressedCube {
     const uint8_t& encodedLen() const { return enc[0]; };
     uint8_t* begin() { return enc.data() + 1; };
     uint8_t* end() { return enc.data() + 1 + enc[0]; };
+    const uint8_t* begin() const { return enc.data() + 1; };
+    const uint8_t* end() const { return enc.data() + 1 + enc[0]; };
 
     bool operator==(const CompressedCube& rhs) const {
         size_t* ptrA = (size_t*)enc.data();
@@ -111,7 +113,7 @@ struct CompressedCube {
         return out;
     }
 
-    Cube decode(uint8_t sizehint, XYZ start = XYZ(0, 0, 0)) {
+    Cube decode(uint8_t sizehint, XYZ start = XYZ(0, 0, 0)) const {
         // std::printf("%d\n", size);
         Cube cube(sizehint);
         const uint32_t noJump = 0x80000000;

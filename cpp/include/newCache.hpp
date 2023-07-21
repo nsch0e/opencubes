@@ -152,9 +152,11 @@ struct FlatCache : public ICache {
         for (auto& [shape, set] : hashes.byshape) {
             auto begin = (uint8_t*)&*allXYZs.end();
             for (auto& subset : set.byhash) {
-                for (auto& cube : subset.set)
+                for (auto& cube : subset.set) {
+                    Cube realCube = cube.decode(n);
                     // allXYZs.emplace_back(allXYZs.end(), subset.set.begin(), subset.set.end());
-                    std::copy(cube.begin(), cube.end(), std::back_inserter(allXYZs));
+                    std::copy(realCube.begin(), realCube.end(), std::back_inserter(allXYZs));
+                }
             }
             auto end = (uint8_t*)&*allXYZs.end();
             // std::printf("  SR %p %p\n", (void*)begin, (void*)end);
