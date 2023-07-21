@@ -51,6 +51,7 @@ int CacheReader::loadFile(const std::string path) {
         return 2;
     }
 
+    using namespace cacheformat;
     header = (Header*)(filePointer);
     shapes = (ShapeEntry*)(filePointer + sizeof(Header));
     data = (char*)(filePointer + sizeof(Header) + header->numShapes * sizeof(ShapeEntry));
