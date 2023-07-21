@@ -154,8 +154,7 @@ struct Worker {
     }
 };
 
-Hashy gen(int n, int threads, bool use_cache, bool write_cache, bool split_cache) {
-    (void)use_cache;
+FlatCache gen(int n, int threads, bool use_cache, bool write_cache, bool split_cache, bool use_split_cache) {
     Hashy hashes;
     if (n < 1)
         return {};
@@ -165,26 +164,49 @@ Hashy gen(int n, int threads, bool use_cache, bool write_cache, bool split_cache
         auto compr = CompressedCube::encode(tmpCube);
         hashes.insert(compr, XYZ(0, 0, 0));
         std::printf("%ld elements for %d\n\r", hashes.size(), n);
-        return hashes;
+        if (write_cache) {
+            Cache::save("cubes_" + std::to_string(n) + ".bin", hashes, n);
+        }
+        return FlatCache(hashes, n);
     }
 
-    std::string cachefile = "cubes_" + std::to_string(n - 1) + ".bin";
-    CacheReader cr(cachefile);
-    cr.printHeader();
-
-    std::printf("N = %d || generating new cubes from %lu base cubes.\n\r", n, cr.size());
+    CacheReader cr;
+    if (use_cache && !use_split_cache) {
+        std::string cachefile = "cubes_" + std::to_string(n - 1) + ".bin";
+        cr.loadFile(cachefile);
+        cr.printHeader();
+    }
+    FlatCache fc;
+    ICache *base = &cr;
+    if (!cr && !use_split_cache) {
+        fc = gen(n - 1, threads, use_cache, write_cache, false);
+        base = &fc;
+    }
+    std::printf("N = %d || generating new cubes from %lu base cubes.\n\r", n, base->size());
     hashes.init(n);
     uint64_t totalSum = 0;
     auto start = std::chrono::steady_clock::now();
     uint32_t totalOutputShapes = hashes.byshape.size();
     uint32_t outShapeCount = 0;
+    auto prevShapes = Hashy::generateShapes(n - 1);
     for (auto &tup : hashes.byshape) {
         outShapeCount++;
         XYZ targetShape = tup.first;
         std::printf("process output shape %3d/%d [%2d %2d %2d]\n\r", outShapeCount, totalOutputShapes, targetShape.x(), targetShape.y(), targetShape.z());
-        for (uint32_t sid = 0; sid < cr.numShapes(); ++sid) {
-            auto s = cr.getCubesByShape(sid);
+        for (uint32_t sid = 0; sid < prevShapes.size(); ++sid) {
+            if (use_split_cache) {
+                // load cache file only for this shape
+                cr = CacheReader();  // TODO: this is just to call destructor of old CacheReader!
+                std::string cachefile = "cubes_" + std::to_string(n - 1) + "_" + std::to_string(prevShapes[sid].x()) + "-" +
+                                        std::to_string(prevShapes[sid].y()) + "-" + std::to_string(prevShapes[sid].z()) + ".bin";
+                cr.loadFile(cachefile);
+            }
+            auto s = base->getCubesByShape(sid);
             auto &shape = s.shape;
+            if (shape != prevShapes[sid]) {
+                std::printf("ERROR caches shape does not match expected shape!\n");
+                exit(-1);
+            }
             int diffx = targetShape.x() - shape.x();
             int diffy = targetShape.y() - shape.y();
             int diffz = targetShape.z() - shape.z();
@@ -236,5 +258,5 @@ Hashy gen(int n, int threads, bool use_cache, bool write_cache, bool split_cache
     std::printf("took %.2f s\033[0K\n\r", dt_ms / 1000.f);
     std::printf("num total cubes: %lu\n\r", totalSum);
     checkResult(n, totalSum);
-    return hashes;
+    return FlatCache(hashes, n);
 }
