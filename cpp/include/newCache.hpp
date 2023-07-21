@@ -7,34 +7,47 @@
 #include "cube.hpp"
 #include "hashes.hpp"
 
+struct CubeView {
+    uint32_t n;
+    const XYZ* sparse;
+    void print() const {
+        for (uint32_t i = 0; i < n; ++i) {
+            printf("(%2d %2d %2d) ", sparse[i].x(), sparse[i].y(), sparse[i].z());
+        }
+        printf("\n");
+    }
+    operator Cube() const {
+        Cube ret(n);
+        memcpy(ret.data(), sparse, n * sizeof(XYZ));
+        return ret;
+    }
+};
 class Workset;
-
-class CubeIterator {
-   public:
+struct CubeIterator {
     using iterator_category = std::forward_iterator_tag;
     using difference_type = std::ptrdiff_t;
-    using value_type = Cube;
-    using pointer = Cube*;    // or also value_type*
-    using reference = Cube&;  // or also value_type&
+    using value_type = CubeView;
+    using pointer = CubeView*;    // or also value_type*
+    using reference = CubeView&;  // or also value_type&
 
+   public:
     // constructor
-    CubeIterator(uint32_t _n, XYZ* ptr) : n(_n), m_ptr(ptr) {}
+    CubeIterator(uint32_t n, uint8_t* ptr) : n(n), m_ptr(ptr) {}
 
-    // invalid iterator (can't deference)
-    explicit CubeIterator() : n(0), m_ptr(nullptr) {}
-
-    // derefecence
-    const value_type operator*() const { return Cube(m_ptr, n); }
+    // operators
+    const value_type operator*() const {
+        value_type ret{n, (XYZ*)m_ptr};
+        return ret;
+    }
     // pointer operator->() { return (pointer)m_ptr; }
 
     // Prefix increment
     CubeIterator& operator++() {
-        m_ptr += n;
+        m_ptr += 3 * n;
         return *this;
     }
-
     CubeIterator& operator+=(int incr) {
-        m_ptr += n * incr;
+        m_ptr += 3 * n * incr;
         return *this;
     }
 
@@ -53,27 +66,18 @@ class CubeIterator {
 
    private:
     uint32_t n;
-    XYZ* m_ptr;
+    uint8_t* m_ptr;
 };
-
-class ShapeRange {
-   public:
-    ShapeRange(XYZ* start, XYZ* stop, uint64_t _size, XYZ _shape) : b(_size, start), e(_size, stop), size(_size), shape_(_shape) {}
-
+struct ShapeRange {
     CubeIterator begin() { return b; }
     CubeIterator end() { return e; }
 
-    XYZ& shape() { return shape_; }
-
-   private:
     CubeIterator b, e;
     uint64_t size;
-    XYZ shape_;
+    XYZ shape;
 };
 
-class ICache {
-   public:
-    virtual ~ICache(){};
+struct ICache {
     virtual ShapeRange getCubesByShape(uint32_t i) = 0;
     virtual uint32_t numShapes() = 0;
     virtual size_t size() = 0;
@@ -91,10 +95,9 @@ class CacheReader : public ICache {
     int printShapes();
     int loadFile(const std::string path);
 
-    size_t size() override { return header->numPolycubes; };
-    uint32_t numShapes() override { return header->numShapes; };
-    operator bool() { return fileLoaded_; }
-
+    // vars
+    char* data;
+    uint8_t* filePointer;
     static constexpr uint32_t MAGIC = 0x42554350;
     static constexpr uint32_t XYZ_SIZE = 3;
     static constexpr uint32_t ALL_SHAPES = -1;
@@ -114,22 +117,19 @@ class CacheReader : public ICache {
         uint64_t size;     // in bytes should be multiple of XYZ_SIZE
     };
 
-    CubeIterator begin() {
-        uint8_t* start = filePointer + shapes[0].offset;
-        return CubeIterator(header->n, (XYZ*)start);
-    }
+    CubeIterator begin() { return CubeIterator(header->n, filePointer + shapes[0].offset); }
+    CubeIterator end() { return CubeIterator(header->n, filePointer + shapes[0].offset + header->numPolycubes * header->n * 3); }
 
-    CubeIterator end() {
-        uint8_t* stop = filePointer + shapes[0].offset + header->numPolycubes * header->n * XYZ_SIZE;
-        return CubeIterator(header->n, (XYZ*)stop);
+    virtual ShapeRange getCubesByShape(uint32_t i) override {
+        if (i >= header->numShapes) return {CubeIterator(header->n, 0), CubeIterator(header->n, 0), 0, XYZ(0, 0, 0)};
+        return {CubeIterator(header->n, filePointer + shapes[i].offset), CubeIterator(header->n, filePointer + shapes[i].offset + shapes[i].size),
+                shapes[i].size / (header->n * sizeof(XYZ)), XYZ(shapes[i].dim0, shapes[i].dim1, shapes[i].dim2)};
     }
-
-    ShapeRange getCubesByShape(uint32_t i) override;
+    virtual size_t size() override { return header->numPolycubes; };
+    virtual uint32_t numShapes() override { return header->numShapes; };
+    operator bool() { return fileLoaded_; }
 
    private:
-    // vars
-    char* data;
-    uint8_t* filePointer;
     // private vars
     std::string path_;
     int fileDescriptor_;
@@ -140,35 +140,34 @@ class CacheReader : public ICache {
     ShapeEntry* shapes;
 };
 
-class FlatCache : public ICache {
+struct FlatCache : public ICache {
     std::vector<XYZ> allXYZs;
     std::vector<ShapeRange> shapes;
     uint8_t n = 0;
-
-   public:
     FlatCache() {}
     FlatCache(Hashy& hashes, uint8_t n) : n(n) {
         allXYZs.reserve(hashes.size() * n);
         shapes.reserve(hashes.byshape.size());
         // std::printf("Flatcache %d %p %p\n", n, (void*)allXYZs.data(), (void*)shapes.data());
         for (auto& [shape, set] : hashes.byshape) {
-            auto begin = allXYZs.data() + allXYZs.size();
+            auto begin = (uint8_t*)&*allXYZs.end();
             for (auto& subset : set.byhash) {
                 for (auto& cube : subset.set)
                     // allXYZs.emplace_back(allXYZs.end(), subset.set.begin(), subset.set.end());
                     std::copy(cube.begin(), cube.end(), std::back_inserter(allXYZs));
             }
-            auto end = allXYZs.data() + allXYZs.size();
+            auto end = (uint8_t*)&*allXYZs.end();
             // std::printf("  SR %p %p\n", (void*)begin, (void*)end);
-            shapes.emplace_back(begin, end, n, shape);
+            ShapeRange sr{CubeIterator(n, begin), CubeIterator(n, end), set.size(), shape};
+            shapes.emplace_back(sr);
         }
     }
-    ShapeRange getCubesByShape(uint32_t i) override {
-        if (i >= shapes.size()) return ShapeRange{nullptr, nullptr, 0, XYZ(0, 0, 0)};
+    virtual ShapeRange getCubesByShape(uint32_t i) override {
+        if (i >= shapes.size()) return {CubeIterator(0, 0), CubeIterator(0, 0), 0, XYZ(0, 0, 0)};
         return shapes[i];
     };
-    uint32_t numShapes() override { return shapes.size(); };
-    size_t size() override { return allXYZs.size() / n / sizeof(XYZ); }
+    virtual uint32_t numShapes() override { return shapes.size(); };
+    virtual size_t size() override { return allXYZs.size() / n / sizeof(XYZ); }
 };
 
 #endif

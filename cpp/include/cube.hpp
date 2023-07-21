@@ -44,45 +44,26 @@ struct HashXYZ {
 using XYZSet = std::unordered_set<XYZ, HashXYZ, std::equal_to<XYZ>>;
 
 struct Cube {
-   private:
-    struct {
-        uint8_t is_shared : 1;
-        uint8_t size : 7;  // MAX 127
-    } bits;
-    XYZ *array = nullptr;
-
-    static_assert(sizeof(bits) == sizeof(uint8_t));
+   protected:
+    size_t array_size;
+    std::unique_ptr<XYZ[]> array;
 
    public:
     // Empty cube
-    Cube() : bits{0, 0} {}
+    Cube() : array_size(0) {}
 
     // Cube with N capacity
-    explicit Cube(uint8_t N) : bits{0, N}, array(new XYZ[bits.size]) {}
+    explicit Cube(size_t N) : array_size(N), array(std::make_unique<XYZ[]>(array_size)) {}
 
     // Construct from pieces
     Cube(std::initializer_list<XYZ> il) : Cube(il.size()) { std::copy(il.begin(), il.end(), begin()); }
 
-    // Construct from range.
-    Cube(const XYZ *start, const XYZ *end) : Cube(std::distance(start, end)) { std::copy(start, end, begin()); }
-
-    // Construct from external source.
-    // Cube shares this the memory until modified.
-    // Caller guarantees the memory given will live longer than *this
-    Cube(XYZ *start, uint8_t n) : bits{1, n}, array(start) {}
-
-    // Copy ctor.
     Cube(const Cube &copy) : Cube(copy.size()) { std::copy(copy.begin(), copy.end(), begin()); }
 
-    ~Cube() {
-        if (!bits.is_shared) {
-            delete[] array;
-        }
-    }
     friend void swap(Cube &a, Cube &b) {
         using std::swap;
         swap(a.array, b.array);
-        swap(a.bits, b.bits);
+        swap(a.array_size, b.array_size);
     }
 
     Cube(Cube &&mv) : Cube() { swap(*this, mv); }
@@ -98,20 +79,15 @@ struct Cube {
         return *this;
     }
 
-    size_t size() const { return bits.size; }
+    size_t size() const { return array_size; }
 
-    XYZ *data() {
-        if (bits.is_shared) {
-            // lift to RAM: this should never happen really.
-            Cube tmp(array, bits.size);
-            swap(*this, tmp);
-            std::printf("Bad use of Cube\n");
-        }
-        return array;
-    }
+    XYZ *data() { return array.get(); }
+    const XYZ *data() const { return array.get(); }
 
-    const XYZ *data() const { return array; }
-
+    /**
+     * Define subset of vector operations for Cube
+     * This simplifies the code everywhere else.
+     */
     XYZ *begin() { return data(); }
 
     XYZ *end() { return data() + size(); }
