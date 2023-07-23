@@ -30,10 +30,20 @@ struct XYZ {
         ret += b;
         return ret;
     }
+    friend XYZ operator-(const XYZ &a, const XYZ &b) {
+        XYZ ret = a;
+        ret -= b;
+        return ret;
+    }
     void operator+=(const XYZ &b) {
         data[0] += b.data[0];
         data[1] += b.data[1];
         data[2] += b.data[2];
+    }
+    void operator-=(const XYZ &b) {
+        data[0] -= b.data[0];
+        data[1] -= b.data[1];
+        data[2] -= b.data[2];
     }
 };
 

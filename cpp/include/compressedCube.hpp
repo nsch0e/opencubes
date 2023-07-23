@@ -16,6 +16,7 @@ struct CompressedCube {
     };
 
     std::array<uint8_t, sizeof(size_t) * 3> enc;
+
     uint8_t& encodedLen() { return enc[0]; };
     const uint8_t& encodedLen() const { return enc[0]; };
     uint8_t* begin() { return enc.data() + 1; };
@@ -38,7 +39,7 @@ struct CompressedCube {
         out.encodedLen() = 0;
         uint8_t nibbles = 0;
         uint32_t nibbleCount = 0;
-        auto put = out.enc.data();
+        auto put = out.enc.data() + 1;
         auto push = [&nibbles, &nibbleCount, &out, &put](uint8_t inst) {
             if (nibbleCount & 1) {
                 nibbles <<= 4;
@@ -122,8 +123,9 @@ struct CompressedCube {
         auto put = cube.begin();
         *put++ = last;
         uint32_t currSize = 1;
+        XYZ min(0, 0, 0);
         for (uint32_t i = 0; i < encodedLen() * 2; ++i) {
-            uint8_t inst = enc[i >> 1];
+            uint8_t inst = enc[1 + (i >> 1)];
             // get lower or upper nibble
             if (i & 1)
                 inst &= 0xf;
@@ -143,6 +145,9 @@ struct CompressedCube {
                 }
                 last += XYZ(dirs[inst][0], dirs[inst][1], dirs[inst][2]);
                 // std::printf("dir %d, insert [%2d %2d %2d]\n", inst, last.x(), last.y(), last.z());
+                if (last.x() < min.x()) min.x() = last.x();
+                if (last.y() < min.y()) min.y() = last.y();
+                if (last.z() < min.z()) min.z() = last.z();
                 *put++ = last;
                 currSize++;
                 if (currSize == sizehint) {
@@ -151,10 +156,15 @@ struct CompressedCube {
                 }
             }
         }
+        if (min.x() != 0 || min.y() != 0 || min.z() != 0) {
+            // std::printf("decoded cube contains negative numbers. Retry\n");
+            return decode(sizehint, start - min);
+        }
         std::sort(cube.begin(), cube.end());
         return cube;
     }
     void print() {
+        std::printf("#%d ", enc[0]);
         for (auto c : enc) std::printf("%02x ", c);
         std::printf("\n");
     }
