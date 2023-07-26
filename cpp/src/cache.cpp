@@ -146,7 +146,8 @@ Hashy Cache::load(std::string path, uint32_t extractShape) {
                 next.data()[k].data[1] = buf[curr_offset - buf_offset + 1];
                 next.data()[k].data[2] = buf[curr_offset - buf_offset + 2];
             }
-            cubes.insert(CompressedCube::encode(next), shape);
+            auto [noerror, compr] = CompressedCube::encode(next);
+            cubes.insert(compr, shape);
         }
 
         // restore pos

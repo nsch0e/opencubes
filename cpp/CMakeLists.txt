@@ -14,7 +14,7 @@ macro(ConfigureTarget Target)
 	target_compile_features(${Target} PUBLIC cxx_std_17)
 	target_compile_definitions(${Target} PUBLIC
 	# Debug defines:
-		$<$<CONFIG:Debug>:DEBUG>
+		#$<$<CONFIG:Debug>:DEBUG>
 	# Release defines:
 		$<$<CONFIG:Release>:NDEBUG>
 		$<$<CONFIG:RelWithDebInfo>:NDEBUG>
@@ -24,7 +24,8 @@ macro(ConfigureTarget Target)
 		-Wall -Wextra
 	# Debug build flags:
 		$<$<CONFIG:Debug>:-O0>
-		$<$<CONFIG:Debug>:-Werror>
+		#$<$<CONFIG:Debug>:-Werror>
+		$<$<CONFIG:Debug>:-g>
 		$<$<CONFIG:Debug>:-Wno-unknown-pragmas>
 	# Release build flags:
 		$<$<CONFIG:Release>:-O3>

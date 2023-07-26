@@ -32,7 +32,7 @@ struct CompressedCube {
         return true;
     }
 
-    static CompressedCube encode(const Cube& cube) {
+    static std::pair<bool, CompressedCube> encode(const Cube& cube) {
         CompressedCube out;
         std::fill(out.enc.begin(), out.enc.end(), 0x88);
         out.encodedLen() = 0;
@@ -101,16 +101,16 @@ struct CompressedCube {
                     }
                 }
                 if (!found) {
-                    printf("ERROR unconnected\n");
-                    cube.print();
-                    break;
+                    // printf("ERROR unconnected\n");
+                    // cube.print();
+                    return {false, out};
                 }
             }
         }
         if (nibbleCount % 2) {
             push(0x8);  // dummy jump
         }
-        return out;
+        return {true, out};
     }
 
     Cube decode(uint8_t sizehint, XYZ start = XYZ(0, 0, 0)) const {
