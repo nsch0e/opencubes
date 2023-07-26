@@ -56,6 +56,27 @@ class CubeIterator {
     XYZ* m_ptr;
 };
 
+namespace cacheformat {
+static constexpr uint32_t MAGIC = 0x42554350;
+static constexpr uint32_t XYZ_SIZE = 3;
+static constexpr uint32_t ALL_SHAPES = -1;
+
+struct Header {
+    uint32_t magic = MAGIC;  // should be "PCUB" = 0x42554350
+    uint32_t n;              // we will never need 32bit but it is nicely aligned
+    uint32_t numShapes;      // defines length of the shapeTable
+    uint64_t numPolycubes;   // total number of polycubes
+};
+struct ShapeEntry {
+    uint8_t dim0;      // offset by -1
+    uint8_t dim1;      // offset by -1
+    uint8_t dim2;      // offset by -1
+    uint8_t reserved;  // for alignment
+    uint64_t offset;   // from beginning of file
+    uint64_t size;     // in bytes should be multiple of XYZ_SIZE
+};
+};  // namespace cacheformat
+
 class ShapeRange {
    public:
     ShapeRange(XYZ* start, XYZ* stop, uint64_t _cubeLen, XYZ _shape)
@@ -98,32 +119,13 @@ class CacheReader : public ICache {
     uint32_t numShapes() override { return header->numShapes; };
     operator bool() { return fileLoaded_; }
 
-    static constexpr uint32_t MAGIC = 0x42554350;
-    static constexpr uint32_t XYZ_SIZE = 3;
-    static constexpr uint32_t ALL_SHAPES = -1;
-
-    struct Header {
-        uint32_t magic = MAGIC;  // shoud be "PCUB" = 0x42554350
-        uint32_t n;              // we will never need 32bit but it is nicely aligned
-        uint32_t numShapes;      // defines length of the shapeTable
-        uint64_t numPolycubes;   // total number of polycubes
-    };
-    struct ShapeEntry {
-        uint8_t dim0;      // offset by -1
-        uint8_t dim1;      // offset by -1
-        uint8_t dim2;      // offset by -1
-        uint8_t reserved;  // for alignment
-        uint64_t offset;   // from beginning of file
-        uint64_t size;     // in bytes should be multiple of XYZ_SIZE
-    };
-
     CubeIterator begin() {
         uint8_t* start = filePointer + shapes[0].offset;
         return CubeIterator(header->n, (XYZ*)start);
     }
 
     CubeIterator end() {
-        uint8_t* stop = filePointer + shapes[0].offset + header->numPolycubes * header->n * XYZ_SIZE;
+        uint8_t* stop = filePointer + shapes[0].offset + header->numPolycubes * header->n * cacheformat::XYZ_SIZE;
         return CubeIterator(header->n, (XYZ*)stop);
     }
 
@@ -135,9 +137,9 @@ class CacheReader : public ICache {
     int fileDescriptor_;
     uint64_t fileSize_;
     bool fileLoaded_;
-    Header dummyHeader;
-    Header* header;
-    ShapeEntry* shapes;
+    cacheformat::Header dummyHeader;
+    cacheformat::Header* header;
+    cacheformat::ShapeEntry* shapes;
 };
 
 class FlatCache : public ICache {
