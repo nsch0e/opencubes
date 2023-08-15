@@ -25,10 +25,12 @@ struct HashCube {
 
 using CubeSet = std::unordered_set<Cube, HashCube, std::equal_to<Cube>>;
 
-struct Subsubhashy {
+class Subsubhashy {
+   protected:
     CubeSet set;
     mutable std::shared_mutex set_mutex;
 
+   public:
     template <typename CubeT>
     void insert(CubeT &&c) {
         std::lock_guard lock(set_mutex);
@@ -48,6 +50,17 @@ struct Subsubhashy {
         std::shared_lock lock(set_mutex);
         return set.size();
     }
+
+    void clear() {
+        std::lock_guard lock(set_mutex);
+        set.clear();
+        set.reserve(1);
+    }
+
+    auto begin() const { return set.begin(); }
+    auto end() const { return set.end(); }
+    auto begin() { return set.begin(); }
+    auto end() { return set.end(); }
 };
 
 template <int NUM>

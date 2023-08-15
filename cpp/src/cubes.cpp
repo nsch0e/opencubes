@@ -314,8 +314,7 @@ FlatCache gen(int n, int threads, bool use_cache, bool write_cache, bool split_c
         }
         if (split_cache) {
             for (auto &subset : hashes.byshape[targetShape].byhash) {
-                subset.set.clear();
-                subset.set.reserve(1);
+                subset.clear();
             }
         }
     }

@@ -214,9 +214,9 @@ void CacheWriter::save(std::string path, Hashy &hashes, uint8_t n) {
     auto time_start = std::chrono::steady_clock::now();
     for (auto &key : keys) {
         for (auto &subset : hashes.byshape[key].byhash) {
-            auto itr = subset.set.begin();
+            auto itr = subset.begin();
 
-            ptrdiff_t dist = subset.set.size();
+            ptrdiff_t dist = subset.size();
             // distribute if range is large enough.
             auto skip = std::max(4096L, std::max(1L, dist / (signed)m_flushers.size()));
             while (dist > skip) {
@@ -226,7 +226,7 @@ void CacheWriter::save(std::string path, Hashy &hashes, uint8_t n) {
                 auto inc = std::min(dist, skip);
                 std::advance(itr, inc);
                 put += n * inc;
-                dist = std::distance(itr, subset.set.end());
+                dist = std::distance(itr, subset.end());
 
                 auto done = 100.0f * (std::distance(xyz->get(), put) / float(num_cubes * n));
                 std::printf("writing data %5.2f%% ...  \r", done);
@@ -240,7 +240,7 @@ void CacheWriter::save(std::string path, Hashy &hashes, uint8_t n) {
             // copy remainder, if any.
             if (dist) {
                 std::lock_guard lock(m_mtx);
-                m_copy.emplace_back(std::bind(copyrange, itr, subset.set.end(), put));
+                m_copy.emplace_back(std::bind(copyrange, itr, subset.end(), put));
                 ++m_num_copys;
                 m_run.notify_all();
                 put += n * dist;
