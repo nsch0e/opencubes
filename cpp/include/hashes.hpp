@@ -64,9 +64,10 @@ class Subsubhashy {
 };
 
 template <int NUM>
-struct Subhashy {
+class Subhashy {
+   protected:
     std::array<Subsubhashy, NUM> byhash;
-
+   public:
     template <typename CubeT>
     void insert(CubeT &&c) {
         HashCube hash;
@@ -84,6 +85,11 @@ struct Subhashy {
         }
         return sum;
     }
+
+    auto begin() const { return byhash.begin(); }
+    auto end() const { return byhash.end(); }
+    auto begin() { return byhash.begin(); }
+    auto end() { return byhash.end(); }
 };
 
 struct Hashy {

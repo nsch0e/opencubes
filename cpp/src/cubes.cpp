@@ -313,7 +313,7 @@ FlatCache gen(int n, int threads, bool use_cache, bool write_cache, bool split_c
                         hashes, n);
         }
         if (split_cache) {
-            for (auto &subset : hashes.byshape[targetShape].byhash) {
+            for (auto &subset : hashes.byshape[targetShape]) {
                 subset.clear();
             }
         }

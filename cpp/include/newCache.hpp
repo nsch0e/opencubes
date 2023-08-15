@@ -166,7 +166,7 @@ class FlatCache : public ICache {
         // std::printf("Flatcache %d %p %p\n", n, (void*)allXYZs.data(), (void*)shapes.data());
         for (auto& [shape, set] : hashes.byshape) {
             auto begin = allXYZs.data() + allXYZs.size();
-            for (auto& subset : set.byhash) {
+            for (auto& subset : set) {
                 for (auto& cube : subset)
                     // allXYZs.emplace_back(allXYZs.end(), subset.set.begin(), subset.set.end());
                     std::copy(cube.begin(), cube.end(), std::back_inserter(allXYZs));

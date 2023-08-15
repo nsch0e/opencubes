@@ -213,7 +213,7 @@ void CacheWriter::save(std::string path, Hashy &hashes, uint8_t n) {
 
     auto time_start = std::chrono::steady_clock::now();
     for (auto &key : keys) {
-        for (auto &subset : hashes.byshape[key].byhash) {
+        for (auto &subset : hashes.byshape[key]) {
             auto itr = subset.begin();
 
             ptrdiff_t dist = subset.size();
