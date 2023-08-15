@@ -67,6 +67,7 @@ template <int NUM>
 class Subhashy {
    protected:
     std::array<Subsubhashy, NUM> byhash;
+
    public:
     template <typename CubeT>
     void insert(CubeT &&c) {
@@ -92,9 +93,12 @@ class Subhashy {
     auto end() { return byhash.end(); }
 };
 
-struct Hashy {
+class Hashy {
+   protected:
     std::map<XYZ, Subhashy<32>> byshape;
+    mutable std::shared_mutex set_mutex;
 
+   public:
     static std::vector<XYZ> generateShapes(int n) {
         std::vector<XYZ> out;
         for (int x = 0; x < n; ++x)
@@ -109,17 +113,31 @@ struct Hashy {
 
     void init(int n) {
         // create all subhashy which will be needed for N
+        std::lock_guard lock(set_mutex);
         for (auto s : generateShapes(n)) byshape[s].size();
         std::printf("%ld sets by shape for N=%d\n\r", byshape.size(), n);
     }
 
+    Subhashy<32> &at(XYZ shape) {
+        std::shared_lock lock(set_mutex);
+        auto itr = byshape.find(shape);
+        if (itr != byshape.end()) {
+            return itr->second;
+        }
+        lock.unlock();
+        // Not sure if this is supposed to happen normally
+        // if init() creates all subhashys required.
+        std::lock_guard elock(set_mutex);
+        return byshape[shape];
+    }
+
     template <typename CubeT>
     void insert(CubeT &&c, XYZ shape) {
-        auto &set = byshape[shape];
-        set.insert(std::forward<CubeT>(c));
+        at(shape).insert(std::forward<CubeT>(c));
     }
 
     auto size() const {
+        std::shared_lock lock(set_mutex);
         size_t sum = 0;
         DEBUG1_PRINTF("%ld maps by shape\n\r", byshape.size());
         for (auto &set : byshape) {
@@ -129,5 +147,15 @@ struct Hashy {
         }
         return sum;
     }
+
+    int numShapes() const {
+        std::shared_lock lock(set_mutex);
+        return byshape.size();
+    }
+
+    auto begin() const { return byshape.begin(); }
+    auto end() const { return byshape.end(); }
+    auto begin() { return byshape.begin(); }
+    auto end() { return byshape.end(); }
 };
 #endif

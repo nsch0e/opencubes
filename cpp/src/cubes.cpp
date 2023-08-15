@@ -246,11 +246,11 @@ FlatCache gen(int n, int threads, bool use_cache, bool write_cache, bool split_c
 
     uint64_t totalSum = 0;
     auto start = std::chrono::steady_clock::now();
-    uint32_t totalOutputShapes = hashes.byshape.size();
+    uint32_t totalOutputShapes = hashes.numShapes();
     uint32_t outShapeCount = 0;
 
     auto prevShapes = Hashy::generateShapes(n - 1);
-    for (auto &tup : hashes.byshape) {
+    for (auto &tup : hashes) {
         outShapeCount++;
         XYZ targetShape = tup.first;
         std::printf("process output shape %3d/%d [%2d %2d %2d]\n\r", outShapeCount, totalOutputShapes, targetShape.x(), targetShape.y(), targetShape.z());
@@ -305,15 +305,15 @@ FlatCache gen(int n, int threads, bool use_cache, bool write_cache, bool split_c
         for (auto& thr : workers) {
             thr.sync();
         }
-        std::printf("  num: %lu\n\r", hashes.byshape[targetShape].size());
-        totalSum += hashes.byshape[targetShape].size();
+        std::printf("  num: %lu\n\r", hashes.at(targetShape).size());
+        totalSum += hashes.at(targetShape).size();
         if (write_cache && split_cache) {
             cw.save(base_path + "cubes_" + std::to_string(n) + "_" + std::to_string(targetShape.x()) + "-" + std::to_string(targetShape.y()) + "-" +
                             std::to_string(targetShape.z()) + ".bin",
                         hashes, n);
         }
         if (split_cache) {
-            for (auto &subset : hashes.byshape[targetShape]) {
+            for (auto &subset : hashes.at(targetShape)) {
                 subset.clear();
             }
         }

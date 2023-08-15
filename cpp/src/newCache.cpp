@@ -169,12 +169,12 @@ void CacheWriter::save(std::string path, Hashy &hashes, uint8_t n) {
     auto header = std::make_shared<struct_region<Header>>(file_, 0);
     (*header)->magic = cacheformat::MAGIC;
     (*header)->n = n;
-    (*header)->numShapes = hashes.byshape.size();
+    (*header)->numShapes = hashes.numShapes();
     (*header)->numPolycubes = hashes.size();
 
     std::vector<XYZ> keys;
     keys.reserve((*header)->numShapes);
-    for (auto &pair : hashes.byshape) keys.push_back(pair.first);
+    for (auto &pair : hashes) keys.push_back(pair.first);
     std::sort(keys.begin(), keys.end());
 
     auto shapeEntry = std::make_shared<array_region<ShapeEntry>>(file_, header->getEndSeek(), (*header)->numShapes);
@@ -189,7 +189,7 @@ void CacheWriter::save(std::string path, Hashy &hashes, uint8_t n) {
         se.dim2 = key.z();
         se.reserved = 0;
         se.offset = offset;
-        auto count = hashes.byshape[key].size();
+        auto count = hashes.at(key).size();
         num_cubes += count;
         se.size = count * XYZ_SIZE * n;
         offset += se.size;
@@ -213,7 +213,7 @@ void CacheWriter::save(std::string path, Hashy &hashes, uint8_t n) {
 
     auto time_start = std::chrono::steady_clock::now();
     for (auto &key : keys) {
-        for (auto &subset : hashes.byshape[key]) {
+        for (auto &subset : hashes.at(key)) {
             auto itr = subset.begin();
 
             ptrdiff_t dist = subset.size();

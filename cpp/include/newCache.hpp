@@ -162,9 +162,9 @@ class FlatCache : public ICache {
     FlatCache() {}
     FlatCache(Hashy& hashes, uint8_t n) : n(n) {
         allXYZs.reserve(hashes.size() * n);
-        shapes.reserve(hashes.byshape.size());
+        shapes.reserve(hashes.numShapes());
         // std::printf("Flatcache %d %p %p\n", n, (void*)allXYZs.data(), (void*)shapes.data());
-        for (auto& [shape, set] : hashes.byshape) {
+        for (auto& [shape, set] : hashes) {
             auto begin = allXYZs.data() + allXYZs.size();
             for (auto& subset : set) {
                 for (auto& cube : subset)
