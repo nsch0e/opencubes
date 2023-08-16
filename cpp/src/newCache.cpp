@@ -1,4 +1,5 @@
 #include "newCache.hpp"
+#include "cubeSwapSet.hpp"
 
 #include <iostream>
 
@@ -201,11 +202,11 @@ void CacheWriter::save(std::string path, Hashy &hashes, uint8_t n) {
     auto xyz = std::make_shared<array_region<XYZ>>(file_, (*shapeEntry)[0].offset, num_cubes * n);
     auto put = xyz->get();
 
-    auto copyrange = [n](CubeSet::iterator itr, CubeSet::iterator end, XYZ *dest) -> void {
+    auto copyrange = [n](const CubeStorage& storage, CubeSwapSet::iterator itr, CubeSwapSet::iterator end, XYZ *dest) -> void {
         while (itr != end) {
             static_assert(sizeof(XYZ) == XYZ_SIZE);
-            assert(itr->size() == n);
-            itr->copyout(n, dest);
+            assert(storage.cubeSize() == n);
+            itr->copyout(storage, n, dest);
             dest += n;
             ++itr;
         }
@@ -233,14 +234,14 @@ void CacheWriter::save(std::string path, Hashy &hashes, uint8_t n) {
                 std::flush(std::cout);
 
                 std::lock_guard lock(m_mtx);
-                m_copy.emplace_back(std::bind(copyrange, start, itr, dest));
+                m_copy.emplace_back(std::bind(copyrange, std::ref(subset.storage()), start, itr, dest));
                 ++m_num_copys;
                 m_run.notify_all();
             }
             // copy remainder, if any.
             if (dist) {
                 std::lock_guard lock(m_mtx);
-                m_copy.emplace_back(std::bind(copyrange, itr, subset.end(), put));
+                m_copy.emplace_back(std::bind(copyrange, std::ref(subset.storage()), itr, subset.end(), put));
                 ++m_num_copys;
                 m_run.notify_all();
                 put += n * dist;

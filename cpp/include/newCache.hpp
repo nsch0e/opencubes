@@ -167,9 +167,8 @@ class FlatCache : public ICache {
         for (auto& [shape, set] : hashes) {
             auto begin = allXYZs.data() + allXYZs.size();
             for (auto& subset : set) {
-                for (auto& cube : subset)
-                    // allXYZs.emplace_back(allXYZs.end(), subset.set.begin(), subset.set.end());
-                    std::copy(cube.begin(), cube.end(), std::back_inserter(allXYZs));
+                for (auto& cubeptr : subset)
+                    cubeptr.copyout(subset.storage(), n, std::back_inserter(allXYZs));
             }
             auto end = allXYZs.data() + allXYZs.size();
             // std::printf("  SR %p %p\n", (void*)begin, (void*)end);

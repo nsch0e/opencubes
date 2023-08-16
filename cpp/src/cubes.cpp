@@ -2,13 +2,13 @@
 
 #include <algorithm>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
+#include <deque>
 #include <filesystem>
 #include <iostream>
 #include <mutex>
 #include <thread>
-#include <deque>
-#include <condition_variable>
 
 #include "cube.hpp"
 #include "hashes.hpp"
@@ -29,11 +29,7 @@ struct Workset {
     XYZ targetShape, shape, expandDim;
     bool notSameShape;
     Workset(Hashy &hashes, XYZ targetShape, XYZ shape, XYZ expandDim, bool notSameShape)
-        : hashes(hashes)
-        , targetShape(targetShape)
-        , shape(shape)
-        , expandDim(expandDim)
-        , notSameShape(notSameShape) {}
+        : hashes(hashes), targetShape(targetShape), shape(shape), expandDim(expandDim), notSameShape(notSameShape) {}
 
     void setRange(ShapeRange &data) {
         _begin_total = data.begin();
@@ -139,7 +135,7 @@ struct Workset {
 struct Worker {
     std::shared_ptr<Workset> ws;
     int id;
-    int state = 3; // 1 == completed/waiting for job, 2 == processing, 3 == job assigned.
+    int state = 3;  // 1 == completed/waiting for job, 2 == processing, 3 == job assigned.
     std::mutex mtx;
     std::condition_variable cond;
     std::condition_variable cond2;
@@ -156,7 +152,7 @@ struct Worker {
 
     void launch(std::shared_ptr<Workset> ws_) {
         std::unique_lock lock(mtx);
-        while(state > 1) {
+        while (state != 1) {
             cond2.wait(lock);
         }
         ws = ws_;
@@ -166,7 +162,7 @@ struct Worker {
 
     void sync() {
         std::unique_lock lock(mtx);
-        while(state > 1) {
+        while (state != 1) {
             cond2.wait(lock);
         }
         ws.reset();
@@ -175,13 +171,11 @@ struct Worker {
     void run() {
         std::unique_lock lock(mtx);
         std::printf("thread nro. %d started.\n", id);
-        while(state) {
+        while (state) {
             state = 1;
             cond2.notify_one();
-            while(state == 1)
-                cond.wait(lock);
-            if(!state)
-                return;
+            while (state == 1) cond.wait(lock);
+            if (!state) return;
             state = 2;
             // std::printf("start %d\n", id);
             auto subset = ws->getPart();
@@ -207,7 +201,7 @@ FlatCache gen(int n, int threads, bool use_cache, bool write_cache, bool split_c
     if (!std::filesystem::is_directory(base_path)) {
         std::filesystem::create_directory(base_path);
     }
-    Hashy hashes;
+    Hashy hashes(base_path);
     if (n < 1)
         return {};
     else if (n == 1) {
@@ -248,12 +242,13 @@ FlatCache gen(int n, int threads, bool use_cache, bool write_cache, bool split_c
     auto start = std::chrono::steady_clock::now();
     uint32_t totalOutputShapes = hashes.numShapes();
     uint32_t outShapeCount = 0;
-
     auto prevShapes = Hashy::generateShapes(n - 1);
-    for (auto &tup : hashes) {
+
+    for (const auto &tup : hashes) {
         outShapeCount++;
         XYZ targetShape = tup.first;
         std::printf("process output shape %3d/%d [%2d %2d %2d]\n\r", outShapeCount, totalOutputShapes, targetShape.x(), targetShape.y(), targetShape.z());
+
         for (uint32_t sid = 0; sid < prevShapes.size(); ++sid) {
             auto &shape = prevShapes[sid];
             int diffx = targetShape.x() - shape.x();
@@ -289,7 +284,7 @@ FlatCache gen(int n, int threads, bool use_cache, bool write_cache, bool split_c
             ws->setRange(s);
 
             // Wait for jobs to complete.
-            for (auto& thr : workers) {
+            for (auto &thr : workers) {
                 thr.sync();
             }
             std::printf("  shape %d %d %d\n\r", shape.x(), shape.y(), shape.z());
@@ -297,25 +292,23 @@ FlatCache gen(int n, int threads, bool use_cache, bool write_cache, bool split_c
             // Because the workset is held by shared_ptr
             // main thread can do above preparation work in parallel
             // while the jobs are running.
-            for (auto& thr : workers) {
+            for (auto &thr : workers) {
                 thr.launch(ws);
             }
         }
         // Wait for jobs to complete.
-        for (auto& thr : workers) {
+        for (auto &thr : workers) {
             thr.sync();
         }
         std::printf("  num: %lu\n\r", hashes.at(targetShape).size());
         totalSum += hashes.at(targetShape).size();
         if (write_cache && split_cache) {
             cw.save(base_path + "cubes_" + std::to_string(n) + "_" + std::to_string(targetShape.x()) + "-" + std::to_string(targetShape.y()) + "-" +
-                            std::to_string(targetShape.z()) + ".bin",
-                        hashes, n);
+                        std::to_string(targetShape.z()) + ".bin",
+                    hashes, n);
         }
         if (split_cache) {
-            for (auto &subset : hashes.at(targetShape)) {
-                subset.clear();
-            }
+            hashes.at(targetShape).clear();
         }
     }
 

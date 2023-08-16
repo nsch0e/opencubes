@@ -3,12 +3,15 @@
 #define OPENCUBES_HASHES_HPP
 #include <array>
 #include <cstdio>
+#include <deque>
+#include <filesystem>
 #include <map>
 #include <shared_mutex>
 #include <unordered_set>
 #include <vector>
 
 #include "cube.hpp"
+#include "cubeSwapSet.hpp"
 #include "utils.hpp"
 
 struct HashCube {
@@ -27,24 +30,30 @@ using CubeSet = std::unordered_set<Cube, HashCube, std::equal_to<Cube>>;
 
 class Subsubhashy {
    protected:
-    CubeSet set;
+    CubeStorage set_storage;
+    CubeSwapSet set;
     mutable std::shared_mutex set_mutex;
 
    public:
+    explicit Subsubhashy(std::filesystem::path path, size_t n) : set_storage(path, n), set(1, CubePtrHash(&set_storage), CubePtrEqual(&set_storage)) {}
+
     template <typename CubeT>
     void insert(CubeT &&c) {
         std::lock_guard lock(set_mutex);
-        set.emplace(std::forward<CubeT>(c));
+        auto [itr, isnew] = set.emplace(set_storage.allocate(std::forward<CubeT>(c)));
+        if (!isnew) {
+            set_storage.cancel_allocation();
+        }
     }
 
+#if __cplusplus > 201703L
+// todo: need C++17 equivalent for *generic*
+// contains() or find() that accepts both Cube and CubePtr types
     bool contains(const Cube &c) const {
         std::shared_lock lock(set_mutex);
-        auto itr = set.find(c);
-        if (itr != set.end()) {
-            return true;
-        }
-        return false;
+        return set.contains<Cube>(c);
     }
+#endif
 
     auto size() const {
         std::shared_lock lock(set_mutex);
@@ -57,25 +66,43 @@ class Subsubhashy {
         set.reserve(1);
     }
 
+    // Get CubeStorage instance.
+    // [this->begin(), this->end()] iterated CubePtr's
+    // Can be resolved with CubePtr::get(this->storage())
+    // that returns copy of the data as Cube.
+    const CubeStorage &storage() const { return set_storage; }
+
     auto begin() const { return set.begin(); }
     auto end() const { return set.end(); }
     auto begin() { return set.begin(); }
     auto end() { return set.end(); }
 };
 
-template <int NUM>
 class Subhashy {
    protected:
-    std::array<Subsubhashy, NUM> byhash;
+    std::deque<Subsubhashy> byhash;
 
    public:
+    Subhashy(int NUM, size_t N, std::filesystem::path path) {
+        for (int i = 0; i < NUM; ++i) {
+            byhash.emplace_back(path, N);
+        }
+    }
+
     template <typename CubeT>
     void insert(CubeT &&c) {
         HashCube hash;
-        auto idx = hash(c) % NUM;
+        auto idx = hash(c) % byhash.size();
         auto &set = byhash[idx];
-        if (!set.contains(c)) set.insert(std::forward<CubeT>(c));
+#if __cplusplus > 201703L
+        if (set.contains(c)) return;
+#endif
+        set.insert(std::forward<CubeT>(c));
         // printf("new size %ld\n\r", byshape[shape].size());
+    }
+
+    void clear() {
+        for (auto &set : byhash) set.clear();
     }
 
     auto size() const {
@@ -95,7 +122,9 @@ class Subhashy {
 
 class Hashy {
    protected:
-    std::map<XYZ, Subhashy<32>> byshape;
+    std::map<XYZ, Subhashy> byshape;
+    std::filesystem::path base_path;
+    int N;
     mutable std::shared_mutex set_mutex;
 
    public:
@@ -111,24 +140,41 @@ class Hashy {
         return out;
     }
 
+    explicit Hashy(std::string path = ".") : base_path(path) {}
+
     void init(int n) {
         // create all subhashy which will be needed for N
-        std::lock_guard lock(set_mutex);
-        for (auto s : generateShapes(n)) byshape[s].size();
+        N = n;
+        for (auto s : generateShapes(n)) {
+            initSubHashy(n, s);
+        }
         std::printf("%ld sets by shape for N=%d\n\r", byshape.size(), n);
     }
 
-    Subhashy<32> &at(XYZ shape) {
+    Subhashy &initSubHashy(int n, XYZ s) {
+        assert(N == n);
+
+        auto itr = byshape.find(s);
+        if (itr == byshape.end()) {
+            auto [itr, isnew] = byshape.emplace(s, Subhashy(32, n, base_path));
+            assert(isnew);
+            itr->second.size();
+            return itr->second;
+        } else {
+            return itr->second;
+        }
+    }
+
+    Subhashy &at(XYZ shape) {
         std::shared_lock lock(set_mutex);
         auto itr = byshape.find(shape);
         if (itr != byshape.end()) {
             return itr->second;
         }
-        lock.unlock();
-        // Not sure if this is supposed to happen normally
-        // if init() creates all subhashys required.
-        std::lock_guard elock(set_mutex);
-        return byshape[shape];
+        // should never get here...
+        std::printf("BUG: missing shape [%2d %2d %2d]:\n\r", shape.x(), shape.y(), shape.z());
+        std::abort();
+        return *((Subhashy *)0);
     }
 
     template <typename CubeT>

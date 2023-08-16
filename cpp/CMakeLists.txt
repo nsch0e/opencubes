@@ -71,6 +71,7 @@ add_library(CubeObjs OBJECT
 	"src/cubes.cpp"
 	"src/rotations.cpp"
 	"src/newCache.cpp"
+	"src/cubeSwapSet.cpp"
 )
 ConfigureTarget(CubeObjs)
 
