@@ -148,6 +148,46 @@ int file::truncate(seekoff_t newsize) {
     return 0;
 }
 
+int file::readAt(seekoff_t fpos, len_t size, void* dataout) const
+{
+    ssize_t rd = pread(fd, dataout, size, fpos);
+    if (rd != (signed)size) {
+        std::fprintf(stderr, "Error reading data from file:%s\n", std::strerror(errno));
+        return -1;
+    }
+    return 0;
+}
+
+int file::writeAt(seekoff_t fpos, len_t size, const void* datain)
+{
+    std::lock_guard lock(mut);
+
+    ssize_t rd = pwrite(fd, datain, size, fpos);
+    if (rd != (signed)size) {
+        std::fprintf(stderr, "Error writing data into file:%s\n", std::strerror(errno));
+        return -1;
+    }
+
+    fd_size = std::max(fd_size, fpos+size);
+    return 0;
+}
+
+int file::copyAt(std::shared_ptr<file> other, seekoff_t other_fpos, len_t size, seekoff_t dest_fpos)
+{
+    off64_t srcp = other_fpos;
+    off64_t dstp = dest_fpos;
+    ssize_t cpy = ::copy_file_range(other->fd, &srcp, fd, &dstp, size, 0);
+    if (cpy != (signed)size) {
+        std::fprintf(stderr, "Error copying file data:%s\n", std::strerror(errno));
+        return -1;
+    }
+
+    std::lock_guard lock(mut);
+    fd_size = std::max(fd_size, dest_fpos+size);
+    return 0;
+}
+
+
 /**
  * Mapped region POSIX/Linux compatible implementation.
  */

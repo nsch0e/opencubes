@@ -539,6 +539,29 @@ class file : public std::enable_shared_from_this<file> {
     int truncate(seekoff_t newsize);
 
     /**
+     * Read @size bytes starting at file offset @fpos
+     * @note copies [fpos, fpos+size] into [dataout, dataout+size]
+     * @return non-zero if error occurred.
+     */
+    int readAt(seekoff_t fpos, len_t size, void* dataout) const;
+
+    /**
+     * Write @size bytes starting at file offset @fpos
+     * @note copies [datain, datain+size] into [fpos, fpos+size]
+     * @note the file size after writeAt() is std::max(size(), fpos+size)
+     * @return non-zero if error occurred.
+     */
+    int writeAt(seekoff_t fpos, len_t size, const void* datain);
+
+    /**
+     * Copy @size bytes starting at file offset @other_fpos
+     * from @other file copying the data at @dest_fpos in this file.
+     * @note copies from other:[other_fpos, other_fpos+size] into this:[dest_fpos, dest_fpos+size]
+     * @note if other is same as *this the destination range cannot overlap with the source range.
+     */
+    int copyAt(std::shared_ptr<file> other, seekoff_t other_fpos, len_t size, seekoff_t dest_fpos);
+
+    /**
      * Current length of the file
      * The file EOF (end-of-file) is at this position.
      */
