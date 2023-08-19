@@ -26,7 +26,7 @@ struct HashCube {
     }
 };
 
-using CubeSet = std::unordered_set<Cube, HashCube, std::equal_to<Cube>>;
+// using CubeSet = std::unordered_set<Cube, HashCube, std::equal_to<Cube>>;
 
 class Subsubhashy {
    protected:
@@ -40,20 +40,22 @@ class Subsubhashy {
     template <typename CubeT>
     void insert(CubeT &&c) {
         std::lock_guard lock(set_mutex);
-        auto [itr, isnew] = set.emplace(set_storage.allocate(std::forward<CubeT>(c)));
-        if (!isnew) {
-            set_storage.cancel_allocation();
+        auto cptr = set_storage.local(std::forward<CubeT>(c));
+        auto [itr, isnew] = set.emplace(cptr);
+        if (isnew) {
+            set_storage.commit();
+        } else {
+            set_storage.drop();
         }
     }
 
-#if __cplusplus > 201703L
-// todo: need C++17 equivalent for *generic*
-// contains() or find() that accepts both Cube and CubePtr types
     bool contains(const Cube &c) const {
         std::shared_lock lock(set_mutex);
-        return set.contains<Cube>(c);
+        auto cptr = set_storage.local(c);
+        auto itr = set.find(cptr);
+        set_storage.drop();
+        return itr != set.end();
     }
-#endif
 
     auto size() const {
         std::shared_lock lock(set_mutex);
@@ -64,12 +66,10 @@ class Subsubhashy {
         std::lock_guard lock(set_mutex);
         set.clear();
         set.reserve(1);
+        set_storage.discard();
     }
 
     // Get CubeStorage instance.
-    // [this->begin(), this->end()] iterated CubePtr's
-    // Can be resolved with CubePtr::get(this->storage())
-    // that returns copy of the data as Cube.
     const CubeStorage &storage() const { return set_storage; }
 
     auto begin() const { return set.begin(); }
@@ -94,9 +94,8 @@ class Subhashy {
         HashCube hash;
         auto idx = hash(c) % byhash.size();
         auto &set = byhash[idx];
-#if __cplusplus > 201703L
+
         if (set.contains(c)) return;
-#endif
         set.insert(std::forward<CubeT>(c));
         // printf("new size %ld\n\r", byshape[shape].size());
     }

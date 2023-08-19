@@ -1,7 +1,8 @@
 #include "newCache.hpp"
-#include "cubeSwapSet.hpp"
 
 #include <iostream>
+
+#include "cubeSwapSet.hpp"
 
 CacheReader::CacheReader() : path_(""), fileLoaded_(false), dummyHeader{0, 0, 0, 0}, header(&dummyHeader), shapes(nullptr) {}
 
@@ -167,18 +168,24 @@ void CacheWriter::save(std::string path, Hashy &hashes, uint8_t n) {
         return;
     }
 
+    // Write header:
     auto header = std::make_shared<struct_region<Header>>(file_, 0);
     (*header)->magic = cacheformat::MAGIC;
     (*header)->n = n;
     (*header)->numShapes = hashes.numShapes();
     (*header)->numPolycubes = hashes.size();
+    header->flush();
 
     std::vector<XYZ> keys;
     keys.reserve((*header)->numShapes);
     for (auto &pair : hashes) keys.push_back(pair.first);
     std::sort(keys.begin(), keys.end());
 
+    // Write shape table:
     auto shapeEntry = std::make_shared<array_region<ShapeEntry>>(file_, header->getEndSeek(), (*header)->numShapes);
+    header.reset();
+
+    static_assert(XYZ_SIZE == sizeof(XYZ), "XYZ_SIZE differs from sizeof(XYZ)");
 
     uint64_t offset = shapeEntry->getEndSeek();
     size_t num_cubes = 0;
@@ -195,89 +202,79 @@ void CacheWriter::save(std::string path, Hashy &hashes, uint8_t n) {
         se.size = count * XYZ_SIZE * n;
         offset += se.size;
     }
+    shapeEntry->flush();
 
     // put XYZs
-    // Serialize large CubeSet(s) in parallel.
+    // Schedule merging of the cache file.
+    // CubeSwapSet enables massive optimizations in how
+    // CacheWriter can merge the SubsubHashy's data into the final cache file:
+    // - copystorage lambda takes the source file and it's file name from the
+    //   SubsubHashy::storage() returned CubeStorage.
+    // - mapped::file::copyAt() is used to efficiently copy the source file contents into this cache file
+    // - Finally the copystorage lambda *deletes* the source storage file
+    // The main program does not need to wait for this process to complete.
 
-    auto xyz = std::make_shared<array_region<XYZ>>(file_, (*shapeEntry)[0].offset, num_cubes * n);
-    auto put = xyz->get();
+    // copystorage takes shared ownership of the file_
+    auto copystorage = [n, file = file_](std::shared_ptr<mapped::file> src, std::filesystem::path rmname, size_t num, mapped::seekoff_t dest) -> void {
+        file->copyAt(src, 0, num * n * sizeof(XYZ), dest);
+        src.reset();
 
-    auto copyrange = [n](const CubeStorage& storage, CubeSwapSet::iterator itr, CubeSwapSet::iterator end, XYZ *dest) -> void {
-        while (itr != end) {
-            static_assert(sizeof(XYZ) == XYZ_SIZE);
-            assert(storage.cubeSize() == n);
-            itr->copyout(storage, n, dest);
-            dest += n;
-            ++itr;
+        // Try remove the source storage file.
+        std::error_code ec;
+        auto stat = std::filesystem::status(rmname, ec);
+        if (!ec && std::filesystem::is_regular_file(stat)) {
+            if (!std::filesystem::remove(rmname, ec)) {
+                std::printf("WARN: failed to remove file: %s", rmname.c_str());
+            }
+        } else {
+            std::printf("WARN: failed to get file status: %s", rmname.c_str());
         }
     };
 
+    mapped::seekoff_t fileEnd = shapeEntry->getEndSeek();
     auto time_start = std::chrono::steady_clock::now();
-    for (auto &key : keys) {
-        for (auto &subset : hashes.at(key)) {
-            auto itr = subset.begin();
-
-            ptrdiff_t dist = subset.size();
-            // distribute if range is large enough.
-            auto skip = std::max(4096L, std::max(1L, dist / (signed)m_flushers.size()));
-            while (dist > skip) {
-                auto start = itr;
-                auto dest = put;
-
-                auto inc = std::min(dist, skip);
-                std::advance(itr, inc);
-                put += n * inc;
-                dist = std::distance(itr, subset.end());
-
-                auto done = 100.0f * (std::distance(xyz->get(), put) / float(num_cubes * n));
-                std::printf("writing data %5.2f%% ...  \r", done);
-                std::flush(std::cout);
-
-                std::lock_guard lock(m_mtx);
-                m_copy.emplace_back(std::bind(copyrange, std::ref(subset.storage()), start, itr, dest));
+    for (size_t i = 0; i < keys.size(); ++i) {
+        auto put = (*shapeEntry)[i].offset;
+        for (auto &subset : hashes.at(keys[i])) {
+            ptrdiff_t num = subset.size();
+            if (num) {
+                // By pass iterating the Subsubhashy entirely
+                // and copy the data from CubeStorage file *directly* into this file.
+                // the Cube data does end up in different order than when copying one-by-one.
+                // But we don't care as the order is random already.
+                // the copy job also deletes the CubeStorage::fileName() file from the disk
+                // once the data copy completes.
+                std::unique_lock lock(m_mtx);
+                m_copy.emplace_back(std::bind(copystorage, subset.storage().getFile(), subset.storage().fileName(), num, put));
                 ++m_num_copys;
                 m_run.notify_all();
-            }
-            // copy remainder, if any.
-            if (dist) {
-                std::lock_guard lock(m_mtx);
-                m_copy.emplace_back(std::bind(copyrange, std::ref(subset.storage()), itr, subset.end(), put));
-                ++m_num_copys;
-                m_run.notify_all();
-                put += n * dist;
-
-                auto done = 100.0f * (std::distance(xyz->get(), put) / float(num_cubes * n));
-                std::printf("writing data %5.2f%% ...  \r", done);
+                std::printf("scheduled copy jobs: %*d ...  \r", 3, (int)m_num_copys);
                 std::flush(std::cout);
             }
+            put += num * n * XYZ_SIZE;
         }
+        fileEnd = std::max(fileEnd, put);
     }
+    shapeEntry.reset();
 
-    // sanity check:
-    assert(put == (*xyz).get() + num_cubes * n);
-
-    // sync up.
+    // sync up a bit.
+    // don't allow the copy job queue to grow indefinitely
+    // if the disk can't keep up.
     std::unique_lock lock(m_mtx);
-    while (m_num_copys) {
+    while (m_num_copys > m_flushers.size()) {
+        std::printf("waiting for %*d copy jobs to complete ...  \r", 3, (int)m_num_copys);
+        std::flush(std::cout);
         m_wait.wait(lock);
     }
 
-    // move the resources into flush job.
+    // move the file into flush job.
     m_flushes.emplace_back(std::bind(
-        [](auto &&file, auto &&header, auto &&shapeEntry, auto &&xyz) -> void {
-            // flush.
-            header->flush();
-            shapeEntry->flush();
-            xyz->flush();
-            // Truncate file to proper size.
-            file->truncate(xyz->getEndSeek());
+        [fileEnd](auto &&file) -> void {
+            file->truncate(fileEnd);
             file->close();
             file.reset();
-            xyz.reset();
-            shapeEntry.reset();
-            header.reset();
         },
-        std::move(file_), std::move(header), std::move(shapeEntry), std::move(xyz)));
+        std::move(file_)));
     ++m_num_flushes;
     m_run.notify_all();
 
@@ -290,6 +287,8 @@ void CacheWriter::save(std::string path, Hashy &hashes, uint8_t n) {
 void CacheWriter::flush() {
     std::unique_lock lock(m_mtx);
     while (m_num_flushes) {
+        std::printf("%*d copy jobs total remaining on %*d files  ...  \r", 3, (int)m_num_copys, 2, (int)m_num_flushes);
+        std::flush(std::cout);
         m_wait.wait(lock);
     }
 }
