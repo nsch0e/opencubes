@@ -10,7 +10,7 @@
 #define CONFIG_COMPILERID "@CMAKE_CXX_COMPILER_ID@ @CMAKE_CXX_COMPILER_VERSION@"
 
 // Enable Cube struct pointer compaction
-#define CONFIG_PACK_CUBE_ADDR @BUILD_PACK_CUBE_ADDR@
+#cmakedefine01 CUBES_PACK_CUBE_XYZ_ADDR
 
 // Maximum Polycubes N that may be computed
 #define CUBES_MAX_N @BUILD_CUBES_MAX_N@

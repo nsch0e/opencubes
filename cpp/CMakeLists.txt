@@ -7,11 +7,11 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 if(NOT BUILD_CUBES_MAX_N)
-	set(BUILD_CUBES_MAX_N 20 CACHE STRING "Limit of maximum N Polycubes to be computed" FORCE)
+	set(BUILD_CUBES_MAX_N 20 CACHE STRING "Limit of maximum N Polycubes to be computed")
 endif()
 
-if(NOT BUILD_PACK_CUBE_ADDR)
-	set(BUILD_PACK_CUBE_ADDR 1 CACHE BOOL "Pack Cube struct XYZ memory address into 56-bit field." FORCE)
+if(NOT CUBES_PACK_CUBE_XYZ_ADDR)
+	set(CUBES_PACK_CUBE_XYZ_ADDR ON CACHE BOOL "Pack Cube struct XYZ memory address into 56-bit field.")
 endif()
 
 # Try extract current HEAD commit-id in git
