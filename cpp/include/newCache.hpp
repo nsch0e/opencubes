@@ -34,7 +34,47 @@ struct ShapeEntry {
 };
 };  // namespace cacheformat
 
-class CubeIterator {
+/**
+ * newCache.hpp: provide two versions of the cache:
+ *
+ * - FlatCache implements "memory-only" cache and is constructed from Hashy.
+ *   It is needed for boot-strapping the cache files and computing
+ *   cubes without writing any data into disk.
+ *   FlatCache::getCubesByShape() return ShapeRange that points into the Cube data in memory.
+ *   ShapeRange then provides the Cube range as CubeIterator(s).
+ *
+ * - CacheReader implements the actual cache file system.
+ *   CacheReader::getCubesByShape() return FileShapeRange that
+ *   defines subset shape range from the cache file.
+ *   FileShapeRange then provides the Cube range as CubeFileIterator(s).
+ */
+class ICubeIterator {
+   public:
+    using iterator_category = std::forward_iterator_tag;
+    using difference_type = std::ptrdiff_t;
+    using value_type = Cube;
+    using pointer = Cube*;    // or also value_type*
+    using reference = Cube&;  // or also value_type&
+
+    virtual ~ICubeIterator(){};
+
+    virtual std::unique_ptr<ICubeIterator> clone() const = 0;
+
+    virtual const value_type operator*() const = 0;
+    virtual uint64_t seek() const = 0;
+    virtual ICubeIterator& operator++() = 0;
+    virtual ICubeIterator& operator+=(int incr) = 0;
+
+    friend bool operator==(const ICubeIterator& a, const ICubeIterator& b) { return a.seek() == b.seek(); };
+    friend bool operator<(const ICubeIterator& a, const ICubeIterator& b) { return a.seek() < b.seek(); };
+    friend bool operator>(const ICubeIterator& a, const ICubeIterator& b) { return a.seek() > b.seek(); };
+    friend bool operator!=(const ICubeIterator& a, const ICubeIterator& b) { return a.seek() != b.seek(); };
+};
+
+/**
+ * Iterator for Cubes stored in some memory area.
+ */
+class CubeIterator : public ICubeIterator {
    public:
     using iterator_category = std::forward_iterator_tag;
     using difference_type = std::ptrdiff_t;
@@ -48,19 +88,22 @@ class CubeIterator {
     // invalid iterator (can't deference)
     explicit CubeIterator() : n(0), m_ptr(nullptr) {}
 
+    std::unique_ptr<ICubeIterator> clone() const override { return std::make_unique<CubeIterator>(*this); }
+
     // derefecence
-    const value_type operator*() const { return Cube(m_ptr, n); }
+    const value_type operator*() const override { return Cube(m_ptr, n); }
+
     // pointer operator->() { return (pointer)m_ptr; }
 
-    const XYZ* data() const { return m_ptr; }
+    uint64_t seek() const override { return (uint64_t)m_ptr; }
 
     // Prefix increment
-    CubeIterator& operator++() {
+    ICubeIterator& operator++() override {
         m_ptr += n;
         return *this;
     }
 
-    CubeIterator& operator+=(int incr) {
+    ICubeIterator& operator+=(int incr) override {
         m_ptr += n * incr;
         return *this;
     }
@@ -82,19 +125,88 @@ class CubeIterator {
     const XYZ* m_ptr;
 };
 
-class ShapeRange {
+/**
+ * To avoid complicating the use of the ICubeIterator
+ * CacheIterator provides type-erased wrapper that can be copied.
+ */
+class CacheIterator {
    public:
-    ShapeRange(const XYZ* start, const XYZ* stop, uint64_t _cubeLen, XYZ _shape)
-        : b(_cubeLen, start), e(_cubeLen, stop), size_(std::distance(start, stop) / _cubeLen), shape_(_shape) {}
+    using iterator_category = std::forward_iterator_tag;
+    using difference_type = std::ptrdiff_t;
+    using value_type = Cube;
+    using pointer = Cube*;    // or also value_type*
+    using reference = Cube&;  // or also value_type&
 
-    CubeIterator begin() { return b; }
-    CubeIterator end() { return e; }
+    CacheIterator() {}
 
-    XYZ& shape() { return shape_; }
-    auto size() const { return size_; }
+    template <typename Itr>
+    explicit CacheIterator(Itr&& init) : proxy(std::make_unique<std::decay_t<Itr>>(std::forward<Itr>(init))) {}
+
+    CacheIterator(const CacheIterator& copy) {
+        if (copy.proxy) {
+            proxy = copy.proxy->clone();
+        }
+    }
+    CacheIterator& operator=(const CacheIterator& x) {
+        CacheIterator tmp(x);
+        std::swap(proxy, tmp.proxy);
+        return *this;
+    }
+    CacheIterator(CacheIterator&& copy) =default;
+    CacheIterator& operator=(CacheIterator&& x) =default;
+
+    const value_type operator*() const { return **proxy; }
+
+    uint64_t seek() const { return proxy->seek(); }
+
+    CacheIterator& operator++() {
+        ++(*proxy);
+        return *this;
+    }
+    CacheIterator& operator+=(int incr) {
+        (*proxy) += incr;
+        return *this;
+    }
+
+    CacheIterator operator++(int) {
+        CacheIterator tmp = *this;
+        ++(*this);
+        return tmp;
+    }
+
+    friend bool operator==(const CacheIterator& a, const CacheIterator& b) { return a.seek() == b.seek(); };
+    friend bool operator<(const CacheIterator& a, const CacheIterator& b) { return a.seek() < b.seek(); };
+    friend bool operator>(const CacheIterator& a, const CacheIterator& b) { return a.seek() > b.seek(); };
+    friend bool operator!=(const CacheIterator& a, const CacheIterator& b) { return a.seek() != b.seek(); };
 
    private:
-    CubeIterator b, e;
+    std::unique_ptr<ICubeIterator> proxy;
+};
+
+class IShapeRange {
+   public:
+    IShapeRange(){};
+    virtual ~IShapeRange() {}
+
+    virtual CacheIterator begin() const = 0;
+    virtual CacheIterator end() const = 0;
+    virtual XYZ& shape() = 0;
+    virtual size_t size() const = 0;
+};
+
+class ShapeRange : public IShapeRange {
+   public:
+    ShapeRange(const XYZ* start, const XYZ* stop, uint64_t _cubeLen, XYZ _shape)
+        : b(CubeIterator(_cubeLen, start)), e(CubeIterator(_cubeLen, stop)), size_(std::distance(start, stop) / _cubeLen), shape_(_shape) {}
+
+    CacheIterator begin() const override { return b; }
+    CacheIterator end() const override { return e; }
+
+    XYZ& shape() override { return shape_; }
+    size_t size() const override { return size_; }
+
+   private:
+    CacheIterator b, e;
     uint64_t size_;
     XYZ shape_;
 };
@@ -102,7 +214,7 @@ class ShapeRange {
 class ICache {
    public:
     virtual ~ICache(){};
-    virtual ShapeRange getCubesByShape(uint32_t i) = 0;
+    virtual IShapeRange& getCubesByShape(uint32_t i) = 0;
     virtual uint32_t numShapes() = 0;
     virtual size_t size() = 0;
 };
@@ -124,27 +236,16 @@ class CacheReader : public ICache {
     uint32_t numShapes() override { return header->numShapes; };
     operator bool() { return fileLoaded_; }
 
-    // Do begin() and end() make sense for CacheReader
-    // If the cache file provides data for more than single shape?
-    // The data might not even be mapped contiguously to save memory.
-    /*CubeIterator begin() {
-        const uint8_t* start = filePointer + shapes[0].offset;
-        return CubeIterator(header->n, (const XYZ*)start);
-    }
-
-    CubeIterator end() {
-        const uint8_t* stop = filePointer + shapes[0].offset + header->numPolycubes * header->n * XYZ_SIZE;
-        return CubeIterator(header->n, (const XYZ*)stop);
-    }*/
-
     // get shapes at index [0, numShapes()[
-    ShapeRange getCubesByShape(uint32_t i) override;
+    IShapeRange& getCubesByShape(uint32_t i) override;
 
    private:
     std::shared_ptr<mapped::file> file_;
     std::unique_ptr<const mapped::struct_region<cacheformat::Header>> header_;
     std::unique_ptr<const mapped::array_region<cacheformat::ShapeEntry>> shapes_;
     std::unique_ptr<const mapped::array_region<XYZ>> xyz_;
+
+    std::vector<ShapeRange> shapeRanges;
 
     std::string path_;
     bool fileLoaded_;
@@ -167,16 +268,18 @@ class FlatCache : public ICache {
         for (auto& [shape, set] : hashes) {
             auto begin = allXYZs.data() + allXYZs.size();
             for (auto& subset : set) {
-                for (auto& cubeptr : subset)
-                    cubeptr.copyout(subset.storage(), n, std::back_inserter(allXYZs));
+                for (auto& cubeptr : subset) cubeptr.copyout(subset.storage(), n, std::back_inserter(allXYZs));
             }
             auto end = allXYZs.data() + allXYZs.size();
             // std::printf("  SR %p %p\n", (void*)begin, (void*)end);
             shapes.emplace_back(begin, end, n, shape);
         }
+
+        // Add dummy shape range at back:
+        shapes.emplace_back(nullptr, nullptr, n, XYZ(0, 0, 0));
     }
-    ShapeRange getCubesByShape(uint32_t i) override {
-        if (i >= shapes.size()) return ShapeRange{nullptr, nullptr, 0, XYZ(0, 0, 0)};
+    IShapeRange& getCubesByShape(uint32_t i) override {
+        if (i >= shapes.size() - 1) return shapes.back();
         return shapes[i];
     };
     uint32_t numShapes() override { return shapes.size(); };
