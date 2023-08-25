@@ -134,7 +134,12 @@ class CubeStorage {
     int m_storage_version = 0;
     const size_t m_cube_size;
 
+    mapped::seekoff_t m_reserved_end;
+    // End of committed data.
     mapped::seekoff_t m_alloc_seek;
+
+    // m_file_head: 2 MiB memory mapped area at end of the file.
+    std::unique_ptr<mapped::region> m_file_head;
 
    public:
     /**
@@ -160,7 +165,9 @@ class CubeStorage {
     /**
      * Make thread local CubePtr instance.
      * @note
-     *  Other thread cannot access the returned CubePtr until commit() is called.
+     *  Other thread(s) cannot access the returned CubePtr until commit() is called.
+     *  This requires that external lock is held for the data structure
+     *  if CubePtr is made visible to other thread(s) until this thread calls commit()
      */
     CubePtr local(const Cube& cube) const;
 
@@ -189,9 +196,9 @@ class CubeStorage {
 
     /**
      * Explicitly clear the calling thread's read-cache.
-     * @note this will initialize callers read-cache instance
+     * @note this will *initialize* callers read-cache instance
      *  if the thread has not used the read-cache yet.
-     *  So only call this from thread that has used to read().
+     *  Only call this from thread that has used to read() previously.
      */
     void resetReadCache() const;
 

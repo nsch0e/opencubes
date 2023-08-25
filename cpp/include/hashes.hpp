@@ -39,12 +39,13 @@ class Subsubhashy {
 
     template <typename CubeT>
     void insert(CubeT &&c) {
-        std::lock_guard lock(set_mutex);
+        std::unique_lock lock(set_mutex);
         auto cptr = set_storage.local(std::forward<CubeT>(c));
         auto [itr, isnew] = set.emplace(cptr);
         if (isnew) {
             set_storage.commit();
         } else {
+            lock.unlock();
             set_storage.drop();
         }
     }

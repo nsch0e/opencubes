@@ -76,7 +76,7 @@ CubePtr CubeStorage::local(const Cube& cube) const {
 }
 
 void CubeStorage::commit() {
-    std::lock_guard lock(m_mtx);
+    std::unique_lock lock(m_mtx);
 
     if (!m_file) {
         using namespace mapped;
@@ -86,15 +86,32 @@ void CubeStorage::commit() {
             std::printf("CubeStorage::allocate() ERROR: Failed to create file: %s\n", m_fpath.c_str());
             std::abort();
         }
+
+        // memory map 2 MiB chunk for writing.
+        // This also works as "pre-read-cache" for read():
+        // Any CubePtr(s) in this window even if they
+        // are not yet in thread's read-cache have fast readAt().
+        m_file_head = std::make_unique<mapped::region>(m_file, 0, 2 * 1024 * 1024);
     }
+    auto datasize = m_cube_size * sizeof(XYZ);
+    auto write_fpos = m_alloc_seek;
+
+    if(m_reserved_end < m_alloc_seek + datasize) {
+        // advance the backing file m_file_head to next 2 MiB chunk.
+        m_reserved_end += 2 * 1024 * 1024;
+        m_file_head->flushJump(m_reserved_end);
+    }
+    // advance write offset:
+    m_alloc_seek = write_fpos + datasize;
+    // allow parallel m_file_head->writeAt() calls:
+    lock.unlock();
 
     auto& ctx = ThreadCache::get();
     assert(ctx.local_enabled);
     assert(ctx.local_seek == m_alloc_seek);
     ctx.local_enabled = false;
 
-    m_file->writeAt(m_alloc_seek, m_cube_size * sizeof(XYZ), ctx.local.data());
-    m_alloc_seek += m_cube_size * sizeof(XYZ);
+    m_file_head->writeAt(write_fpos, datasize, ctx.local.data());
 }
 
 void CubeStorage::drop() const {
@@ -134,7 +151,7 @@ const Cube& CubeStorage::read(const CubePtr& x) const {
 
         // Read Cube data
         Cube tmp(m_cube_size);
-        m_file->readAt(x.seek(), m_cube_size * sizeof(XYZ), tmp.data());
+        m_file_head->readAt(x.seek(), m_cube_size * sizeof(XYZ), tmp.data());
 
         // Move it into an new read-cache entry:
         auto nitr = ctx.lru.insert(ctx.lru.end(), key);
@@ -154,7 +171,7 @@ void CubeStorage::copydata(const CubePtr& x, size_t n, XYZ* destination) const {
     // copydata() doesn't use thread's read-cache
     // so local() cannot be active:
     assert(!ThreadCache::get().local_enabled);
-    m_file->readAt(x.seek(), n * sizeof(XYZ), destination);
+    m_file_head->readAt(x.seek(), n * sizeof(XYZ), destination);
 }
 
 void CubeStorage::discard() {
@@ -163,11 +180,14 @@ void CubeStorage::discard() {
     if (m_file) {
         // The backing file is kept intact
         // so that CacheWriter can process it.
+        m_file_head->flush();
+        m_file_head.reset();
         m_file.reset();
         m_alloc_seek = 0;
+        m_reserved_end = 0;
         // Thread read-cache problem:
-        // discard() must cause eviction of all entries for each
-        // thread's read cache that point into this.
+        // discard() must cause eviction of all read-cache
+        // entries for each thread's read cache that point into this.
         // This done by incrementing m_storage_version:
         // the entries can't simply be found as they are
         // made with m_storage_version - 1 value.
