@@ -189,7 +189,7 @@ struct Cube {
      * Copy cube data into destination buffer.
      */
     void copyout(int num, XYZ *dest) const {
-        assert(num <= size());
+        assert(num <= (signed)size());
         std::copy_n(begin(), num, dest);
     }
 };

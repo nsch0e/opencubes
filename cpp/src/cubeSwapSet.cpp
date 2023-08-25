@@ -108,7 +108,7 @@ void CubeStorage::commit() {
 
     auto& ctx = ThreadCache::get();
     assert(ctx.local_enabled);
-    assert(ctx.local_seek == m_alloc_seek);
+    assert(ctx.local_seek == write_fpos);
     ctx.local_enabled = false;
 
     m_file_head->writeAt(write_fpos, datasize, ctx.local.data());
