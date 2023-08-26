@@ -3,12 +3,15 @@
 #define OPENCUBES_HASHES_HPP
 #include <array>
 #include <cstdio>
+#include <deque>
+#include <filesystem>
 #include <map>
 #include <shared_mutex>
 #include <unordered_set>
 #include <vector>
 
 #include "cube.hpp"
+#include "cubeSwapSet.hpp"
 #include "utils.hpp"
 
 struct HashCube {
@@ -23,54 +26,108 @@ struct HashCube {
     }
 };
 
-using CubeSet = std::unordered_set<Cube, HashCube, std::equal_to<Cube>>;
+// using CubeSet = std::unordered_set<Cube, HashCube, std::equal_to<Cube>>;
 
-struct Hashy {
-    struct Subsubhashy {
-        CubeSet set;
-        std::shared_mutex set_mutex;
+class Subsubhashy {
+   protected:
+    CubeStorage set_storage;
+    CubeSwapSet set;
+    mutable std::shared_mutex set_mutex;
 
-        template <typename CubeT>
-        void insert(CubeT &&c) {
-            std::lock_guard lock(set_mutex);
-            set.emplace(std::forward<CubeT>(c));
+   public:
+    explicit Subsubhashy(std::filesystem::path path, size_t n) : set_storage(path, n), set(1, CubePtrHash(&set_storage), CubePtrEqual(&set_storage)) {}
+
+    template <typename CubeT>
+    void insert(CubeT &&c) {
+        std::unique_lock lock(set_mutex);
+        auto cptr = set_storage.local(std::forward<CubeT>(c));
+        auto [itr, isnew] = set.emplace(cptr);
+        if (isnew) {
+            set_storage.commit();
+        } else {
+            lock.unlock();
+            set_storage.drop();
         }
+    }
 
-        bool contains(const Cube &c) {
-            std::shared_lock lock(set_mutex);
-            return set.count(c);
+    bool contains(const Cube &c) const {
+        std::shared_lock lock(set_mutex);
+        auto cptr = set_storage.local(c);
+        auto itr = set.find(cptr);
+        set_storage.drop();
+        return itr != set.end();
+    }
+
+    auto size() const {
+        std::shared_lock lock(set_mutex);
+        return set.size();
+    }
+
+    void clear() {
+        std::lock_guard lock(set_mutex);
+        set.clear();
+        set.reserve(1);
+        set_storage.discard();
+    }
+
+    // Get CubeStorage instance.
+    const CubeStorage &storage() const { return set_storage; }
+
+    auto begin() const { return set.begin(); }
+    auto end() const { return set.end(); }
+    auto begin() { return set.begin(); }
+    auto end() { return set.end(); }
+};
+
+class Subhashy {
+   protected:
+    std::deque<Subsubhashy> byhash;
+
+   public:
+    Subhashy(int NUM, size_t N, std::filesystem::path path) {
+        for (int i = 0; i < NUM; ++i) {
+            byhash.emplace_back(path, N);
         }
+    }
 
-        auto size() {
-            std::shared_lock lock(set_mutex);
-            return set.size();
+    template <typename CubeT>
+    void insert(CubeT &&c) {
+        HashCube hash;
+        auto idx = hash(c) % byhash.size();
+        auto &set = byhash[idx];
+
+        if (set.contains(c)) return;
+        set.insert(std::forward<CubeT>(c));
+        // printf("new size %ld\n\r", byshape[shape].size());
+    }
+
+    void clear() {
+        for (auto &set : byhash) set.clear();
+    }
+
+    auto size() const {
+        size_t sum = 0;
+        for (auto &set : byhash) {
+            auto part = set.size();
+            sum += part;
         }
-    };
-    template <int NUM>
-    struct Subhashy {
-        std::array<Subsubhashy, NUM> byhash;
+        return sum;
+    }
 
-        template <typename CubeT>
-        void insert(CubeT &&c) {
-            HashCube hash;
-            auto idx = hash(c) % NUM;
-            auto &set = byhash[idx];
-            if (!set.contains(c)) set.insert(std::forward<CubeT>(c));
-            // printf("new size %ld\n\r", byshape[shape].size());
-        }
+    auto begin() const { return byhash.begin(); }
+    auto end() const { return byhash.end(); }
+    auto begin() { return byhash.begin(); }
+    auto end() { return byhash.end(); }
+};
 
-        auto size() {
-            size_t sum = 0;
-            for (auto &set : byhash) {
-                auto part = set.size();
-                sum += part;
-            }
-            return sum;
-        }
-    };
+class Hashy {
+   protected:
+    std::map<XYZ, Subhashy> byshape;
+    std::filesystem::path base_path;
+    int N;
+    mutable std::shared_mutex set_mutex;
 
-    std::map<XYZ, Subhashy<32>> byshape;
-
+   public:
     static std::vector<XYZ> generateShapes(int n) {
         std::vector<XYZ> out;
         for (int x = 0; x < n; ++x)
@@ -83,27 +140,68 @@ struct Hashy {
         return out;
     }
 
+    explicit Hashy(std::string path = ".") : base_path(path) {}
+
     void init(int n) {
         // create all subhashy which will be needed for N
-        for (auto s : generateShapes(n)) byshape[s].size();
+        N = n;
+        for (auto s : generateShapes(n)) {
+            initSubHashy(n, s);
+        }
         std::printf("%ld sets by shape for N=%d\n\r", byshape.size(), n);
+    }
+
+    Subhashy &initSubHashy(int n, XYZ s) {
+        assert(N == n);
+
+        auto itr = byshape.find(s);
+        if (itr == byshape.end()) {
+            auto [itr, isnew] = byshape.emplace(s, Subhashy(32, n, base_path));
+            assert(isnew);
+            itr->second.size();
+            return itr->second;
+        } else {
+            return itr->second;
+        }
+    }
+
+    Subhashy &at(XYZ shape) {
+        std::shared_lock lock(set_mutex);
+        auto itr = byshape.find(shape);
+        if (itr != byshape.end()) {
+            return itr->second;
+        }
+        // should never get here...
+        std::printf("BUG: missing shape [%2d %2d %2d]:\n\r", shape.x(), shape.y(), shape.z());
+        std::abort();
+        return *((Subhashy *)0);
     }
 
     template <typename CubeT>
     void insert(CubeT &&c, XYZ shape) {
-        auto &set = byshape[shape];
-        set.insert(std::forward<CubeT>(c));
+        at(shape).insert(std::forward<CubeT>(c));
     }
 
-    auto size() {
+    auto size() const {
+        std::shared_lock lock(set_mutex);
         size_t sum = 0;
-        DEBUG_PRINTF("%ld maps by shape\n\r", byshape.size());
+        DEBUG1_PRINTF("%ld maps by shape\n\r", byshape.size());
         for (auto &set : byshape) {
             auto part = set.second.size();
-            DEBUG_PRINTF("bucket [%2d %2d %2d]: %ld\n", set.first.x(), set.first.y(), set.first.z(), part);
+            DEBUG1_PRINTF("bucket [%2d %2d %2d]: %ld\n", set.first.x(), set.first.y(), set.first.z(), part);
             sum += part;
         }
         return sum;
     }
+
+    int numShapes() const {
+        std::shared_lock lock(set_mutex);
+        return byshape.size();
+    }
+
+    auto begin() const { return byshape.begin(); }
+    auto end() const { return byshape.end(); }
+    auto begin() { return byshape.begin(); }
+    auto end() { return byshape.end(); }
 };
 #endif

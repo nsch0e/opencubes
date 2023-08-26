@@ -1,0 +1,18 @@
+#pragma once
+#ifndef OPENCUBES_CONFIG_HPP
+#define OPENCUBES_CONFIG_HPP
+
+// @CONFIG_IS_READONLY@
+
+// Version info embedded into the build
+#define CONFIG_VERSION "@CONFIG_GIT_VERSION@"
+#define CONFIG_BUILDTYPE "@CMAKE_BUILD_TYPE@"
+#define CONFIG_COMPILERID "@CMAKE_CXX_COMPILER_ID@ @CMAKE_CXX_COMPILER_VERSION@"
+
+// Enable Cube struct pointer compaction
+#cmakedefine01 CUBES_PACK_CUBE_XYZ_ADDR
+
+// Maximum Polycubes N that may be computed
+#define CUBES_MAX_N @BUILD_CUBES_MAX_N@
+
+#endif
