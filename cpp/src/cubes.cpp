@@ -22,27 +22,27 @@ struct Workset {
     std::mutex mu;
 
     CacheReader cr;
-    CubeIterator _begin_total;
-    CubeIterator _begin;
-    CubeIterator _end;
+    CacheIterator _begin_total;
+    CacheIterator _begin;
+    CacheIterator _end;
     Hashy &hashes;
     XYZ targetShape, shape, expandDim;
     bool notSameShape;
     Workset(Hashy &hashes, XYZ targetShape, XYZ shape, XYZ expandDim, bool notSameShape)
         : hashes(hashes), targetShape(targetShape), shape(shape), expandDim(expandDim), notSameShape(notSameShape) {}
 
-    void setRange(ShapeRange &data) {
+    void setRange(IShapeRange &data) {
         _begin_total = data.begin();
         _begin = data.begin();
         _end = data.end();
     }
 
     struct Subset {
-        CubeIterator _begin, _end;
+        CacheIterator _begin, _end;
         bool valid;
         float percent;
-        auto begin() { return _begin; }
-        auto end() { return _end; }
+        CacheIterator begin() { return _begin; }
+        CacheIterator end() { return _end; }
     };
 
     Subset getPart() {
@@ -50,7 +50,7 @@ struct Workset {
         auto a = _begin;
         _begin += 500;
         if (_begin > _end) _begin = _end;
-        return {a, _begin, a < _end, 100 * float(std::distance(_begin_total.data(), a.data())) / std::distance(_begin_total.data(), _end.data())};
+        return {a, _begin, a < _end, 100 * float(a.seek() - _begin_total.seek() + 1) / (_end.seek() - _begin_total.seek() + 1)};
     }
 
     void expand(const Cube &c) {
@@ -275,7 +275,7 @@ FlatCache gen(int n, int threads, bool use_cache, bool write_cache, bool split_c
                 base = &ws->cr;
                 // cr.printHeader();
             }
-            auto s = base->getCubesByShape(sid);
+            auto& s = base->getCubesByShape(sid);
             if (shape != s.shape()) {
                 std::printf("ERROR caches shape does not match expected shape!\n");
                 exit(-1);

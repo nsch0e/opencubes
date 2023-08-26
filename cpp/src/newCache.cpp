@@ -51,49 +51,56 @@ int CacheReader::loadFile(const std::string path) {
     shapes_ = std::make_unique<const mapped::array_region<cacheformat::ShapeEntry>>(file_, header_->getEndSeek(), (*header_)->numShapes);
     shapes = shapes_->get();
 
+    // Initialize ShapeRanges
     size_t datasize = 0;
     for (unsigned int i = 0; i < header->numShapes; ++i) {
         datasize += shapes[i].size;
     }
 
-    // map rest of the file as XYZ data:
     if (file_->size() != shapes_->getEndSeek() + datasize) {
         std::printf("warn: file size does not match expected value\n");
     }
-    xyz_ = std::make_unique<const mapped::array_region<XYZ>>(file_, shapes_->getEndSeek(), datasize);
+
+    // Initialize shapeRanges array:
+    for (unsigned int i = 0; i < header->numShapes; ++i) {
+        if (shapes[i].size) {
+            auto start = shapes[i].offset;
+            auto end = start + shapes[i].size;
+            shapeRanges.emplace_back(file_, start, end, header->n, XYZ(shapes[i].dim0, shapes[i].dim1, shapes[i].dim2));
+        } else {
+            // table entry has no data.
+            // shapes[i].offset may have bogus value.
+            shapeRanges.emplace_back(file_, -1, -1, header->n, XYZ(shapes[i].dim0, shapes[i].dim1, shapes[i].dim2));
+        }
+    }
+
+    // Add dummy entry at back:
+    shapeRanges.emplace_back(file_, -1, -1, header->n, XYZ(0, 0, 0));
 
     fileLoaded_ = true;
 
     return 0;
 }
 
-ShapeRange CacheReader::getCubesByShape(uint32_t i) {
+Cube CubeReadIterator::read() const {
+    Cube tmp(n);
+    m_file->readAt(m_seek, n * sizeof(XYZ), tmp.data());
+    return tmp;
+}
+
+
+IShapeRange &CacheReader::getCubesByShape(uint32_t i) {
     if (i >= header->numShapes) {
-        return ShapeRange{nullptr, nullptr, 0, XYZ(0, 0, 0)};
+        return shapeRanges.back();
     }
-    if (shapes[i].size <= 0) {
-        return ShapeRange{nullptr, nullptr, header->n, XYZ(shapes[i].dim0, shapes[i].dim1, shapes[i].dim2)};
-    }
-    // get section start
-    // note: shapes[i].offset may have bogus offset
-    // if any earlier shape table entry was empty before i
-    // so we ignore the offset here.
-    size_t offset = 0;
-    for (unsigned int k = 0; k < i; ++k) {
-        offset += shapes[k].size;
-    }
-    auto index = offset / cacheformat::XYZ_SIZE;
-    auto num_xyz = shapes[i].size / cacheformat::XYZ_SIZE;
-    // pointers to Cube data:
-    auto start = xyz_->get() + index;
-    auto end = xyz_->get() + index + num_xyz;
-    return ShapeRange{start, end, header->n, XYZ(shapes[i].dim0, shapes[i].dim1, shapes[i].dim2)};
+
+    return shapeRanges[i];
 }
 
 void CacheReader::unload() {
     // unload file from memory
     if (fileLoaded_) {
-        xyz_.reset();
+        shapeRanges.clear();
         shapes_.reset();
         header_.reset();
         file_.reset();
