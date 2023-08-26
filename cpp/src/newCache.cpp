@@ -61,34 +61,33 @@ int CacheReader::loadFile(const std::string path) {
         std::printf("warn: file size does not match expected value\n");
     }
 
-    xyz_ = std::make_unique<const mapped::array_region<XYZ>>(file_, shapes_->getEndSeek(), datasize);
-
     // Initialize shapeRanges array:
-    size_t offset = 0;
     for (unsigned int i = 0; i < header->numShapes; ++i) {
         if (shapes[i].size) {
-            auto index = offset / cacheformat::XYZ_SIZE;
-            auto num_xyz = shapes[i].size / cacheformat::XYZ_SIZE;
-            auto start = xyz_->get() + index;
-            auto end = xyz_->get() + index + num_xyz;
-
-            shapeRanges.emplace_back(start, end, header->n, XYZ(shapes[i].dim0, shapes[i].dim1, shapes[i].dim2));
+            auto start = shapes[i].offset;
+            auto end = start + shapes[i].size;
+            shapeRanges.emplace_back(file_, start, end, header->n, XYZ(shapes[i].dim0, shapes[i].dim1, shapes[i].dim2));
         } else {
             // table entry has no data.
             // shapes[i].offset may have bogus value.
-            shapeRanges.emplace_back(nullptr, nullptr, header->n, XYZ(shapes[i].dim0, shapes[i].dim1, shapes[i].dim2));
+            shapeRanges.emplace_back(file_, -1, -1, header->n, XYZ(shapes[i].dim0, shapes[i].dim1, shapes[i].dim2));
         }
-
-        offset += shapes[i].size;
     }
 
     // Add dummy entry at back:
-    shapeRanges.emplace_back(nullptr, nullptr, header->n, XYZ(0, 0, 0));
+    shapeRanges.emplace_back(file_, -1, -1, header->n, XYZ(0, 0, 0));
 
     fileLoaded_ = true;
 
     return 0;
 }
+
+Cube CubeReadIterator::read() const {
+    Cube tmp(n);
+    m_file->readAt(m_seek, n * sizeof(XYZ), tmp.data());
+    return tmp;
+}
+
 
 IShapeRange &CacheReader::getCubesByShape(uint32_t i) {
     if (i >= header->numShapes) {
@@ -102,7 +101,6 @@ void CacheReader::unload() {
     // unload file from memory
     if (fileLoaded_) {
         shapeRanges.clear();
-        xyz_.reset();
         shapes_.reset();
         header_.reset();
         file_.reset();

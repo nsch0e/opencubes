@@ -8,6 +8,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <memory>
 
 #include "cube.hpp"
 #include "hashes.hpp"
@@ -125,6 +126,61 @@ class CubeIterator : public ICubeIterator {
     const XYZ* m_ptr;
 };
 
+class CubeReadIterator : public ICubeIterator {
+   public:
+    using iterator_category = std::forward_iterator_tag;
+    using difference_type = std::ptrdiff_t;
+    using value_type = Cube;
+    using pointer = Cube*;    // or also value_type*
+    using reference = Cube&;  // or also value_type&
+
+    // constructor
+    CubeReadIterator(std::shared_ptr<mapped::file> file, uint32_t _n, mapped::seekoff_t offset) : n(_n), m_seek(offset), m_file(file) {}
+
+    // invalid iterator (can't deference)
+    explicit CubeReadIterator() : n(0), m_seek(-1) {}
+
+    std::unique_ptr<ICubeIterator> clone() const override { return std::make_unique<CubeReadIterator>(*this); }
+
+    // derefecence
+    const value_type operator*() const override { return read(); }
+
+    // pointer operator->() { return (pointer)m_seek; }
+
+    uint64_t seek() const override { return (uint64_t)m_seek; }
+
+    // Prefix increment
+    ICubeIterator& operator++() override {
+        m_seek += n * sizeof(XYZ);
+        return *this;
+    }
+
+    ICubeIterator& operator+=(int incr) override {
+        m_seek += n * incr * sizeof(XYZ);
+        return *this;
+    }
+
+    // Postfix increment
+    CubeReadIterator operator++(int) {
+        CubeReadIterator tmp = *this;
+        ++(*this);
+        return tmp;
+    }
+
+    friend bool operator==(const CubeReadIterator& a, const CubeReadIterator& b) { return a.m_seek == b.m_seek; };
+    friend bool operator<(const CubeReadIterator& a, const CubeReadIterator& b) { return a.m_seek < b.m_seek; };
+    friend bool operator>(const CubeReadIterator& a, const CubeReadIterator& b) { return a.m_seek > b.m_seek; };
+    friend bool operator!=(const CubeReadIterator& a, const CubeReadIterator& b) { return a.m_seek != b.m_seek; };
+
+   private:
+    uint32_t n;
+    mapped::seekoff_t m_seek;
+    std::shared_ptr<mapped::file> m_file;
+
+    // de-reference is implemented by read()
+    Cube read() const;
+};
+
 /**
  * To avoid complicating the use of the ICubeIterator
  * CacheIterator provides type-erased wrapper that can be copied.
@@ -211,6 +267,25 @@ class ShapeRange : public IShapeRange {
     XYZ shape_;
 };
 
+class FileShapeRange : public IShapeRange {
+   public:
+    FileShapeRange(std::shared_ptr<mapped::file> file, mapped::seekoff_t start, mapped::seekoff_t stop, uint64_t _cubeLen, XYZ _shape)
+        : b(CubeReadIterator(file, _cubeLen, start)),
+        e(CubeReadIterator(file, _cubeLen, stop)),
+        size_((stop - start) / _cubeLen), shape_(_shape) {}
+
+    CacheIterator begin() const override { return b; }
+    CacheIterator end() const override { return e; }
+
+    XYZ& shape() override { return shape_; }
+    size_t size() const override { return size_; }
+
+   private:
+    CacheIterator b, e;
+    uint64_t size_;
+    XYZ shape_;
+};
+
 class ICache {
    public:
     virtual ~ICache(){};
@@ -243,9 +318,8 @@ class CacheReader : public ICache {
     std::shared_ptr<mapped::file> file_;
     std::unique_ptr<const mapped::struct_region<cacheformat::Header>> header_;
     std::unique_ptr<const mapped::array_region<cacheformat::ShapeEntry>> shapes_;
-    std::unique_ptr<const mapped::array_region<XYZ>> xyz_;
 
-    std::vector<ShapeRange> shapeRanges;
+    std::vector<FileShapeRange> shapeRanges;
 
     std::string path_;
     bool fileLoaded_;
